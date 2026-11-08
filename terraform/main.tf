@@ -12,18 +12,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Busca a AMI oficial mais recente do Ubuntu 24.04 LTS
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+data "aws_ssm_parameter" "ubuntu_2404_ami" {
+  name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }

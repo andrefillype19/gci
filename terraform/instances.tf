@@ -1,4 +1,4 @@
-# IAM Role para o SSM (Caso deseje conectar via AWS Session Manager)
+# IAM Role para o AWS Systems Manager (SSM)
 resource "aws_iam_role" "ssm_role" {
   name = "gci-ec2-ssm-role"
 
@@ -22,9 +22,9 @@ resource "aws_iam_instance_profile" "ssm_profile" {
   role = aws_iam_role.ssm_role.name
 }
 
-# 1. Instância do Banco de Dados (Subnet Privada - m7i-flex.large)
+# 1. Instância do Banco de Dados PostgreSQL 11 (Subnet Privada - m7i-flex.large)
 resource "aws_instance" "postgres_db" {
-  ami                  = data.aws_ami.ubuntu.id
+  ami                  = data.aws_ssm_parameter.ubuntu_2404_ami.value
   instance_type        = var.db_instance_type
   subnet_id            = aws_subnet.private_subnet.id
   vpc_security_group_ids = [aws_security_group.db_sg.id]
@@ -36,20 +36,56 @@ resource "aws_instance" "postgres_db" {
     volume_type = "gp3"
   }
 
-  # Provisionamento automático do PostgreSQL nativo no boot
   user_data = <<-EOF
               #!/bin/bash
-              apt update && apt upgrade -y
-              apt install postgresql postgresql-contrib -y
+              set -e
+
+              # 1. Adicionar o repositório PGDG para instalar o PostgreSQL 11 no Ubuntu 24.04
+              apt update && apt install -y curl ca-certificates lsb-release gnupg
+              curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+              echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+
+              apt update
+              apt install -y postgresql-11 postgresql-client-11
+
+              # 2. Permitir escuta na rede privada da VPC (10.0.0.0/16)
+              PG_CONF="/etc/postgresql/11/main/postgresql.conf"
+              PG_HBA="/etc/postgresql/11/main/pg_hba.conf"
+
+              sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" $PG_CONF
+              echo "host all all 10.0.0.0/16 scram-sha-256" >> $PG_HBA
+              echo "host all all 10.0.0.0/16 md5" >> $PG_HBA
+
+              systemctl restart postgresql
+
+              # 3. Direcionar arquivos temporários para inicialização
+              mkdir -p /tmp/db-init
+
+              # 4. Injetar e executar 01-create-role.sh
+              cat << 'EOSCRIPT1' > /tmp/db-init/01-create-role.sh
+              ${file("${path.module}/../database/init/01-create-role.sh")}
+              EOSCRIPT1
+
+              # 5. Injetar o arquivo gci.sql
+              cat << 'EOSQL' > /tmp/db-init/gci.sql
+              ${file("${path.module}/../database/gci.sql")}
+              EOSQL
+
+              # 6. Injetar e executar 02-restore.sh
+              cat << 'EOSCRIPT2' > /tmp/db-init/02-restore.sh
+              ${file("${path.module}/../database/init/02-restore.sh")}
+              EOSCRIPT2
+
+              # Ajustar permissões para o usuário 'postgres' executar
+              chmod -R 777 /tmp/db-init
               
-              # Configura o escuta de rede para a VPC
-              sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/16/main/postgresql.conf
-              echo "host all all 10.0.0.0/16 scram-sha-256" >> /etc/postgresql/16/main/pg_hba.conf
-              
-              # Criação do banco e credenciais padrão
-              sudo -u postgres psql -c "CREATE DATABASE \"gci-test-db\";"
-              sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'admin';"
-              
+              cd /tmp/db-init
+              sudo -u postgres ./01-create-role.sh
+              sudo -u postgres ./02-restore.sh
+
+              # Limpeza
+              rm -rf /tmp/db-init
+
               systemctl restart postgresql
               EOF
 
@@ -60,7 +96,7 @@ resource "aws_instance" "postgres_db" {
 
 # 2. Instância da Aplicação / k3s (Subnet Pública - t3.small)
 resource "aws_instance" "app_server" {
-  ami                  = data.aws_ami.ubuntu.id
+  ami                  = data.aws_ssm_parameter.ubuntu_2404_ami.value
   instance_type        = var.app_instance_type
   subnet_id            = aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
