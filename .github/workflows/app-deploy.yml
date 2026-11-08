@@ -68,7 +68,7 @@ jobs:
 
           echo "ec2_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      # 5. Transfere toda a estrutura da pasta 'deploy' mantendo os caminhos relativos
+      # 5. Transfere a pasta 'deploy/' preservando a estrutura exata do repositório
       - name: Transfer K8s Manifests to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -76,10 +76,10 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "deploy/"
-          target: "/home/ubuntu/gci"
+          target: "/home/ubuntu/gci/"
           strip_components: 0
 
-      # 6. Executa a limpeza previa, o Kustomize e o rollout no k3s
+      # 6. Executa a aplicação do Kustomize dentro do diretório do overlay
       - name: Deploy to k3s via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -93,11 +93,11 @@ jobs:
             # 2. Garante que o namespace 'app' existe
             sudo $K3S_BIN kubectl create namespace app --dry-run=client -o yaml | sudo $K3S_BIN kubectl apply -f -
 
-            # 3. Garante que estamos executando da raiz do projeto na EC2 (/home/ubuntu/gci)
-            cd /home/ubuntu/gci
+            # 3. Entra diretamente no diretório do overlay desejado para garantir a resolução relativa (../../)
+            cd /home/ubuntu/gci/deploy/overlays/nfs-round-robin
 
-            # 4. Aplica o Kustomize apontando para o overlay desejado a partir da raiz
-            sudo $K3S_BIN kubectl apply -k deploy/overlays/nfs-round-robin -n app
+            # 4. Aplica o Kustomize apontando para o diretório atual (.)
+            sudo $K3S_BIN kubectl apply -k . -n app
 
             # 5. Reinicia a aplicação para forçar o download da imagem :latest
             sudo $K3S_BIN kubectl rollout restart deployment/gci-app -n app
