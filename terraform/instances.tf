@@ -24,12 +24,12 @@ resource "aws_iam_instance_profile" "ssm_profile" {
 
 # 1. Instância do Banco de Dados PostgreSQL 11 (Subnet Privada - m7i-flex.large)
 resource "aws_instance" "postgres_db" {
-  ami                  = data.aws_ssm_parameter.ubuntu_2404_ami.value
-  instance_type        = var.db_instance_type
-  subnet_id            = aws_subnet.private_subnet.id
+  ami                    = data.aws_ssm_parameter.ubuntu_2404_ami.value
+  instance_type          = var.db_instance_type
+  subnet_id              = aws_subnet.private_subnet.id
   vpc_security_group_ids = [aws_security_group.db_sg.id]
-  key_name             = var.key_name
-  iam_instance_profile = aws_iam_instance_profile.ssm_profile.name
+  key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
 
   root_block_device {
     volume_size = 15
@@ -91,11 +91,11 @@ resource "aws_instance" "postgres_db" {
 
 # 2. Instância da Aplicação / k3s (Subnet Pública - t3.small)
 resource "aws_instance" "app_server" {
-  ami                  = data.aws_ssm_parameter.ubuntu_2404_ami.value
-  instance_type        = var.app_instance_type
-  subnet_id            = aws_subnet.public_subnet.id
+  ami                    = data.aws_ssm_parameter.ubuntu_2404_ami.value
+  instance_type          = var.app_instance_type
+  subnet_id              = aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
-  key_name             = var.key_name
+  key_name               = var.key_name
 
   root_block_device {
     volume_size = 20
