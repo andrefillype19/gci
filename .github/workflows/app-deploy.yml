@@ -69,12 +69,20 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Tentar clone via SSH usando HTTPS com PAT ou aplicar comandos diretos no k3s
-            # Usando caminho absoluto /usr/local/bin/k3s para evitar erro de PATH
-            if sudo /usr/local/bin/k3s kubectl get deployment gci-app -n app > /dev/null 2>&1; then
-              echo "Reiniciando Deployment da aplicacao no k3s..."
-              sudo /usr/local/bin/k3s kubectl rollout restart deployment/gci-app -n app
-            else
-              echo "Deployment 'gci-app' nao encontrado no namespace 'app'. Verifique a aplicacao dos manifestos k8s."
-              exit 1
-            fi
+            # 1. Garante que a pasta /home/ubuntu/app existe
+            mkdir -p /home/ubuntu/app
+
+            # 2. Baixa o manifesto k8s diretamente do repositório para a instância
+            curl -sSL https://raw.githubusercontent.com/andrefillype19/gci/main/k8s/deployment.yaml -o /home/ubuntu/app/deployment.yaml
+
+            # 3. Garante que o namespace 'app' existe
+            sudo /usr/local/bin/k3s kubectl create namespace app --dry-run=client -o yaml | sudo /usr/local/bin/k3s kubectl apply -f -
+
+            # 4. Aplica o manifesto (cria se não existir, atualiza se já existir)
+            sudo /usr/local/bin/k3s kubectl apply -f /home/ubuntu/app/deployment.yaml -n app
+
+            # 5. Força o rollout restart para garantir que a imagem latest seja puxada do Docker Hub
+            sudo /usr/local/bin/k3s kubectl rollout restart deployment/gci-app -n app
+            
+            # 6. Aguarda o status do rollout
+            sudo /usr/local/bin/k3s kubectl rollout status deployment/gci-app -n app --timeout=60s
