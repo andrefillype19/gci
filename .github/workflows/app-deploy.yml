@@ -79,7 +79,7 @@ jobs:
           target: "/home/ubuntu/gci/"
           strip_components: 0
 
-      # 6. Executa a aplicação do Kustomize dentro do diretório do overlay
+      # 6. Executa a aplicação do Kustomize liberando referências fora do diretório (--load-restrictor LoadRestrictionsNone)
       - name: Deploy to k3s via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -93,11 +93,11 @@ jobs:
             # 2. Garante que o namespace 'app' existe
             sudo $K3S_BIN kubectl create namespace app --dry-run=client -o yaml | sudo $K3S_BIN kubectl apply -f -
 
-            # 3. Entra diretamente no diretório do overlay desejado para garantir a resolução relativa (../../)
+            # 3. Entra no diretório do overlay
             cd /home/ubuntu/gci/deploy/overlays/nfs-round-robin
 
-            # 4. Aplica o Kustomize apontando para o diretório atual (.)
-            sudo $K3S_BIN kubectl apply -k . -n app
+            # 4. Aplica o Kustomize liberando o acesso às pastas pai (../../common e ../../base)
+            sudo $K3S_BIN kubectl apply -k . -n app --load-restrictor LoadRestrictionsNone
 
             # 5. Reinicia a aplicação para forçar o download da imagem :latest
             sudo $K3S_BIN kubectl rollout restart deployment/gci-app -n app
