@@ -69,12 +69,12 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Clona ou atualiza o repositório 'gci' na EC2
-            if [ ! -d "/home/ubuntu/gci" ]; then
-              git clone https://github.com/andrefillype19/gci.git /home/ubuntu/gci
+            # 1. Tentar clone via SSH usando HTTPS com PAT ou aplicar comandos diretos no k3s
+            # Usando caminho absoluto /usr/local/bin/k3s para evitar erro de PATH
+            if sudo /usr/local/bin/k3s kubectl get deployment gci-app -n app > /dev/null 2>&1; then
+              echo "Reiniciando Deployment da aplicacao no k3s..."
+              sudo /usr/local/bin/k3s kubectl rollout restart deployment/gci-app -n app
+            else
+              echo "Deployment 'gci-app' nao encontrado no namespace 'app'. Verifique a aplicacao dos manifestos k8s."
+              exit 1
             fi
-            cd /home/ubuntu/gci
-            git pull origin main
-
-            # Reinicia os Pods da aplicação para aplicar a nova imagem
-            sudo k3s kubectl rollout restart deployment/gci-app -n app
