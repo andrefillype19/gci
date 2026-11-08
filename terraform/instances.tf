@@ -95,33 +95,25 @@ resource "aws_instance" "app_server" {
 
   user_data = <<-EOF
               #!/bin/bash
-              set -e
+              exec > /var/log/user-data.log 2>&1
+              set -ex
 
-              # 1. Instalar dependências básicas e Git
-              apt update && apt install -y curl git
+              # 1. Atualizar repositórios e instalar dependências
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -y
+              apt-get install -y curl git
 
               # 2. Instalar k3s
-              curl -sfL https://get.k3s.io | sh -
+              curl -sfL https://get.k3s.io | K3S_NODE_NAME="gci-app-server" sh -
 
-              # 3. Criar links simbólicos em /usr/bin/ para comandos SSH remotos reconhecerem o binário
+              # 3. Permissões e links simbólicos essenciais
+              chmod 644 /etc/rancher/k3s/k3s.yaml
               ln -sf /usr/local/bin/k3s /usr/bin/k3s
               ln -sf /usr/local/bin/kubectl /usr/bin/kubectl
 
-              # 4. Aguardar inicialização do cluster
-              sleep 15
-
-              # 5. Clonar o repositório público para aplicar os manifestos iniciais do K8s
-              mkdir -p /tmp/repo
-              git clone https://github.com/andrefillype19/gci.git /tmp/repo
-
-              # 6. Criar namespace 'app' e aplicar manifestos (caso existam na pasta k8s/)
+              # 4. Aguardar o k3s iniciar completamente
+              sleep 10
               /usr/local/bin/kubectl create namespace app || true
-              if [ -d "/tmp/repo/k8s" ]; then
-                /usr/local/bin/kubectl apply -f /tmp/repo/k8s/ -n app || true
-              fi
-
-              # Limpeza
-              rm -rf /tmp/repo
               EOF
 
   tags = {
