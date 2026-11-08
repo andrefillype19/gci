@@ -68,7 +68,18 @@ jobs:
 
           echo "ec2_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      # 5. SSH na EC2 pública para clonar/sincronizar o repositório e aplicar via Kustomize (-k)
+      # 5. Transfere a pasta 'deploy/' do GitHub Runner para a EC2 via SCP
+      - name: Transfer K8s Manifests to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ steps.get-ip.outputs.ec2_ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "deploy/"
+          target: "/home/ubuntu/gci-deploy/"
+          strip_components: 0
+
+      # 6. Executa os comandos do K3s na EC2 via SSH
       - name: Deploy to k3s via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -76,23 +87,23 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Clona ou atualiza a pasta do repositório na EC2
-            if [ ! -d "/home/ubuntu/gci" ]; then
-              git clone https://github.com/andrefillype19/gci.git /home/ubuntu/gci
-            fi
-            cd /home/ubuntu/gci
-            git pull origin main
+            # 1. Aguarda a instalacao do k3s caso a EC2 tenha sido recriada recentemente
+            echo "Aguardando binario do k3s estar disponivel..."
+            until command -v k3s >/dev/null 2>&1 || [ -f /usr/local/bin/k3s ]; do
+              sleep 5
+            done
+
+            # Define o caminho do binario do k3s/kubectl
+            K3S_BIN=$(command -v k3s || echo "/usr/local/bin/k3s")
 
             # 2. Garante que o namespace 'app' existe
-            sudo /usr/local/bin/k3s kubectl create namespace app --dry-run=client -o yaml | sudo /usr/local/bin/k3s kubectl apply -f -
+            sudo $K3S_BIN kubectl create namespace app --dry-run=client -o yaml | sudo $K3S_BIN kubectl apply -f -
 
-            # 3. Aplica o Kustomize (-k) apontando para o overlay desejado
-            # Altere o caminho abaixo para o overlay que deseja utilizar no ambiente:
-            # Opções: deploy/overlays/nfs-round-robin | deploy/overlays/nfs-sticky | deploy/overlays/no-nfs-round-robin | deploy/overlays/no-nfs/sticky
-            sudo /usr/local/bin/k3s kubectl apply -k deploy/overlays/nfs-round-robin -n app
+            # 3. Aplica o overlay do Kustomize diretamente dos arquivos transferidos via SCP
+            sudo $K3S_BIN kubectl apply -k /home/ubuntu/gci-deploy/deploy/overlays/nfs-round-robin -n app
 
-            # 4. Força o rollout restart para garantir que os pods baixem a nova imagem latest
-            sudo /usr/local/bin/k3s kubectl rollout restart deployment/gci-app -n app
+            # 4. Força o rollout restart para baixar a nova imagem latest
+            sudo $K3S_BIN kubectl rollout restart deployment/gci-app -n app
 
-            # 5. Aguarda a conclusão do rollout (timeout de 60s)
-            sudo /usr/local/bin/k3s kubectl rollout status deployment/gci-app -n app --timeout=60s
+            # 5. Aguarda o status do rollout (timeout de 60s)
+            sudo $K3S_BIN kubectl rollout status deployment/gci-app -n app --timeout=60s
