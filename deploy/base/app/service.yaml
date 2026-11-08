@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gci-app
+  namespace: app
+  labels:
+    app.kubernetes.io/name: gci-app
+    app.kubernetes.io/part-of: gci
+    app.kubernetes.io/component: application
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gci-app
+    app.kubernetes.io/part-of: gci
+    app.kubernetes.io/component: application
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

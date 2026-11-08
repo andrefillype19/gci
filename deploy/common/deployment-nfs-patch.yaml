@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gci-app
+  namespace: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: gci-app
+          volumeMounts:
+            - name: nfs-uploads
+              mountPath: /app/trunk/protected/uploads
+      volumes:
+        - name: nfs-uploads
+          persistentVolumeClaim:
+            claimName: nfs-uploads-pvc
