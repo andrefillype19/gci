@@ -6,7 +6,7 @@ on:
     branches: [ "main" ]
     paths:
       - 'app/**'
-      - 'deploy/**' # Monitora alterações na pasta deploy (manifestos k8s)
+      - 'deploy/**'       # Monitora toda a estrutura de manifestos (base, common, overlays)
       - 'nfs-server/**'
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Build da aplicação Yii
+      # 1. Build da aplicação Yii
       - name: Build and Push App Image
         uses: docker/build-push-action@v5
         with:
@@ -35,7 +35,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/gci:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/gci:${{ github.sha }}
 
-      # Build do Servidor NFS (Caso altere o Dockerfile do nfs-server)
+      # 2. Build do Servidor NFS
       - name: Build and Push NFS Image
         uses: docker/build-push-action@v5
         with:
@@ -44,7 +44,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/gci-file-server:latest
 
-      # Obter o IP Público da EC2 do k3s
+      # 3. Configurar Credenciais AWS
       - name: Configurar Credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -52,16 +52,23 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
+      # 4. Obter o IP Público da EC2 do k3s com validação
       - name: Get EC2 Public IP
         id: get-ip
         run: |
           PUBLIC_IP=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=gci-app-server" "Name=instance-state-name,Values=running" \
-            --query "Reservations[*].Instances[*].PublicIpAddress" \
+            --query "Reservations[*].Instances[0].PublicIpAddress" \
             --output text)
+
+          if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" == "None" ]; then
+            echo "ERRO: Nenhuma instancia 'gci-app-server' em estado running foi encontrada na us-east-2."
+            exit 1
+          fi
+
           echo "ec2_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
 
-      # SSH na EC2 pública para sincronizar a pasta 'deploy' e aplicar no k3s
+      # 5. SSH na EC2 pública para clonar/sincronizar o repositório e aplicar via Kustomize (-k)
       - name: Deploy to k3s via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -69,20 +76,23 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 1. Garante que a pasta /home/ubuntu/app existe
-            mkdir -p /home/ubuntu/app
+            # 1. Clona ou atualiza a pasta do repositório na EC2
+            if [ ! -d "/home/ubuntu/gci" ]; then
+              git clone https://github.com/andrefillype19/gci.git /home/ubuntu/gci
+            fi
+            cd /home/ubuntu/gci
+            git pull origin main
 
-            # 2. Baixa o manifesto k8s diretamente do repositório para a instância
-            curl -sSL https://raw.githubusercontent.com/andrefillype19/gci/main/k8s/deployment.yaml -o /home/ubuntu/app/deployment.yaml
-
-            # 3. Garante que o namespace 'app' existe
+            # 2. Garante que o namespace 'app' existe
             sudo /usr/local/bin/k3s kubectl create namespace app --dry-run=client -o yaml | sudo /usr/local/bin/k3s kubectl apply -f -
 
-            # 4. Aplica o manifesto (cria se não existir, atualiza se já existir)
-            sudo /usr/local/bin/k3s kubectl apply -f /home/ubuntu/app/deployment.yaml -n app
+            # 3. Aplica o Kustomize (-k) apontando para o overlay desejado
+            # Altere o caminho abaixo para o overlay que deseja utilizar no ambiente:
+            # Opções: deploy/overlays/nfs-round-robin | deploy/overlays/nfs-sticky | deploy/overlays/no-nfs-round-robin | deploy/overlays/no-nfs/sticky
+            sudo /usr/local/bin/k3s kubectl apply -k deploy/overlays/nfs-round-robin -n app
 
-            # 5. Força o rollout restart para garantir que a imagem latest seja puxada do Docker Hub
+            # 4. Força o rollout restart para garantir que os pods baixem a nova imagem latest
             sudo /usr/local/bin/k3s kubectl rollout restart deployment/gci-app -n app
-            
-            # 6. Aguarda o status do rollout
+
+            # 5. Aguarda a conclusão do rollout (timeout de 60s)
             sudo /usr/local/bin/k3s kubectl rollout status deployment/gci-app -n app --timeout=60s
