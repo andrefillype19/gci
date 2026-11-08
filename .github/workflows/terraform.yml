@@ -1,6 +1,7 @@
 name: "1. Infrastructure CI/CD (Terraform)"
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "main" ]
     paths:
