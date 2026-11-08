@@ -40,7 +40,7 @@ resource "aws_instance" "postgres_db" {
               #!/bin/bash
               set -e
 
-              # 1. Adicionar o repositório PGDG para instalar o PostgreSQL 11 no Ubuntu 24.04
+              # 1. Instalação do PostgreSQL 11 via repositório PGDG
               apt update && apt install -y curl ca-certificates lsb-release gnupg
               curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
               echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
@@ -48,7 +48,7 @@ resource "aws_instance" "postgres_db" {
               apt update
               apt install -y postgresql-11 postgresql-client-11
 
-              # 2. Permitir escuta na rede privada da VPC (10.0.0.0/16)
+              # 2. Configurações de escuta na rede interna
               PG_CONF="/etc/postgresql/11/main/postgresql.conf"
               PG_HBA="/etc/postgresql/11/main/pg_hba.conf"
 
@@ -58,34 +58,29 @@ resource "aws_instance" "postgres_db" {
 
               systemctl restart postgresql
 
-              # 3. Direcionar arquivos temporários para inicialização
+              # 3. Preparação do diretório de restauração
               mkdir -p /tmp/db-init
 
-              # 4. Injetar e executar 01-create-role.sh
+              # 4. Injeção dos arquivos lidos da pasta ../database/
               cat << 'EOSCRIPT1' > /tmp/db-init/01-create-role.sh
               ${file("${path.module}/../database/init/01-create-role.sh")}
               EOSCRIPT1
 
-              # 5. Injetar o arquivo gci.sql
               cat << 'EOSQL' > /tmp/db-init/gci.sql
               ${file("${path.module}/../database/gci.sql")}
               EOSQL
 
-              # 6. Injetar e executar 02-restore.sh
               cat << 'EOSCRIPT2' > /tmp/db-init/02-restore.sh
               ${file("${path.module}/../database/init/02-restore.sh")}
               EOSCRIPT2
 
-              # Ajustar permissões para o usuário 'postgres' executar
+              # 5. Execução do Restore
               chmod -R 777 /tmp/db-init
-              
               cd /tmp/db-init
               sudo -u postgres ./01-create-role.sh
               sudo -u postgres ./02-restore.sh
 
-              # Limpeza
               rm -rf /tmp/db-init
-
               systemctl restart postgresql
               EOF
 
