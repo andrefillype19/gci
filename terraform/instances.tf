@@ -22,7 +22,7 @@ resource "aws_iam_instance_profile" "ssm_profile" {
   role = aws_iam_role.ssm_role.name
 }
 
-# 1. Instância do Banco de Dados PostgreSQL 11 (Subnet Privada - m7i-flex.large)
+# Instância do Banco de Dados PostgreSQL 11 (Subnet Privada - m7i-flex.large)
 resource "aws_instance" "postgres_db" {
   ami                    = data.aws_ssm_parameter.ubuntu_2404_ami.value
   instance_type          = var.db_instance_type
@@ -40,15 +40,15 @@ resource "aws_instance" "postgres_db" {
               #!/bin/bash
               set -e
 
-              # 1. Instalação do PostgreSQL 11 via repositório PGDG
-              apt update && apt install -y curl ca-certificates lsb-release gnupg
+              # 1. Instalar dependências, Git e repositório PGDG (PostgreSQL 11)
+              apt update && apt install -y curl ca-certificates lsb-release gnupg git
               curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
               echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
 
               apt update
               apt install -y postgresql-11 postgresql-client-11
 
-              # 2. Configurações de escuta na rede interna
+              # 2. Permitir escuta na rede privada da VPC (10.0.0.0/16)
               PG_CONF="/etc/postgresql/11/main/postgresql.conf"
               PG_HBA="/etc/postgresql/11/main/pg_hba.conf"
 
@@ -58,29 +58,20 @@ resource "aws_instance" "postgres_db" {
 
               systemctl restart postgresql
 
-              # 3. Preparação do diretório de restauração
-              mkdir -p /tmp/db-init
+              # 3. Baixar o repositório para obter os scripts e o dump SQL sem estourar o limite de userdata
+              mkdir -p /tmp/repo
+              git clone https://github.com/andrefillype19/gci.git /tmp/repo
 
-              # 4. Injeção dos arquivos lidos da pasta ../database/
-              cat << 'EOSCRIPT1' > /tmp/db-init/01-create-role.sh
-              ${file("${path.module}/../database/init/01-create-role.sh")}
-              EOSCRIPT1
+              # 4. Ajustar permissões dos arquivos de inicialização
+              chmod -R 777 /tmp/repo/database
 
-              cat << 'EOSQL' > /tmp/db-init/gci.sql
-              ${file("${path.module}/../database/gci.sql")}
-              EOSQL
-
-              cat << 'EOSCRIPT2' > /tmp/db-init/02-restore.sh
-              ${file("${path.module}/../database/init/02-restore.sh")}
-              EOSCRIPT2
-
-              # 5. Execução do Restore
-              chmod -R 777 /tmp/db-init
-              cd /tmp/db-init
+              # 5. Executar os scripts de criação de roles e restore
+              cd /tmp/repo/database/init
               sudo -u postgres ./01-create-role.sh
               sudo -u postgres ./02-restore.sh
 
-              rm -rf /tmp/db-init
+              # 6. Limpeza e reinício do serviço
+              rm -rf /tmp/repo
               systemctl restart postgresql
               EOF
 
