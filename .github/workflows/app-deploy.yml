@@ -1,0 +1,79 @@
+name: "2. Application Build & Deploy (k3s)"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'app/**'
+      - 'deploy/**' # Monitora alterações na pasta deploy (manifestos k8s)
+      - 'nfs-server/**'
+
+jobs:
+  build-and-deploy:
+    name: "Build Docker Image & Deploy to k3s"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build da aplicação Yii
+      - name: Build and Push App Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/gci:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/gci:${{ github.sha }}
+
+      # Build do Servidor NFS (Caso altere o Dockerfile do nfs-server)
+      - name: Build and Push NFS Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nfs-server
+          file: ./nfs-server/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gci-file-server:latest
+
+      # Obter o IP Público da EC2 do k3s
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Get EC2 Public IP
+        id: get-ip
+        run: |
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=gci-app-server" "Name=instance-state-name,Values=running" \
+            --query "Reservations[*].Instances[*].PublicIpAddress" \
+            --output text)
+          echo "ec2_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+
+      # SSH na EC2 pública para sincronizar a pasta 'deploy' e aplicar no k3s
+      - name: Deploy to k3s via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.get-ip.outputs.ec2_ip }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Clona ou atualiza o repositório 'gci' na EC2
+            if [ ! -d "/home/ubuntu/gci" ]; then
+              git clone https://github.com/andrefillype19/gci.git /home/ubuntu/gci
+            fi
+            cd /home/ubuntu/gci
+            git pull origin main
+
+            # Reinicia os Pods da aplicação para aplicar a nova imagem
+            sudo k3s kubectl rollout restart deployment/gci-app -n app

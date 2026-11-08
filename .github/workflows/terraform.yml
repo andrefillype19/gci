@@ -1,0 +1,47 @@
+name: "1. Infrastructure CI/CD (Terraform)"
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'terraform/**'
+      - 'database/**'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'terraform/**'
+      - 'database/**'
+
+jobs:
+  terraform:
+    name: "Terraform Apply"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init
+        run: cd terraform && terraform init
+
+      - name: Terraform Format & Validate
+        run: cd terraform && terraform fmt -check && terraform validate
+
+      - name: Terraform Plan
+        run: cd terraform && terraform plan -no-color
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: cd terraform && terraform apply -auto-approve
