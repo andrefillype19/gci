@@ -11,8 +11,6 @@ spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: gci-app
-    app.kubernetes.io/part-of: gci
-    app.kubernetes.io/component: application
   ports:
     - name: http
       port: 80
