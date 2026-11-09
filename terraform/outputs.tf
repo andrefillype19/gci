@@ -7,3 +7,8 @@ output "db_private_ip" {
   description = "IP Privado da EC2 do PostgreSQL (Substitua este IP no k8s/base/secret.yaml)"
   value       = aws_instance.postgres_db.private_ip
 }
+
+output "postgres_private_ip" {
+  description = "IP privado da instancia do PostgreSQL para usar no DB_HOST"
+  value       = aws_instance.postgres_db.private_ip
+}
