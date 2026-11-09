@@ -102,5 +102,5 @@ jobs:
             # 5. Reinicia os pods para puxar a nova imagem :latest
             sudo $K3S_BIN kubectl rollout restart deployment/gci-app -n app
 
-            # 6. Aguarda a conclusão da implantação (timeout 60s)
-            sudo $K3S_BIN kubectl rollout status deployment/gci-app -n app --timeout=60s
+            # 6. Aguarda a conclusão da implantação (timeout 180s)
+            sudo $K3S_BIN kubectl rollout status deployment/gci-app -n app --timeout=180s
