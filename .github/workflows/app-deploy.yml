@@ -94,7 +94,7 @@ jobs:
             sudo $K3S_BIN kubectl create namespace app --dry-run=client -o yaml | sudo $K3S_BIN kubectl apply -f -
 
             # 3. Entra na pasta do overlay
-            cd /home/ubuntu/gci/deploy/overlays/nfs-round-robin
+            cd /home/ubuntu/gci/deploy/overlays/no-nfs-round-robin
 
             # 4. Compila liberando navegação entre pastas (../../) e aplica via kubectl
             sudo $K3S_BIN kubectl kustomize . --load-restrictor LoadRestrictionsNone | sudo $K3S_BIN kubectl apply -f - -n app
