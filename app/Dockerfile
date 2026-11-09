@@ -3,7 +3,6 @@ FROM dmstr/php-yii2:latest-alpine-nginx
 WORKDIR /app
 
 COPY trunk/ /app/trunk/
-
 COPY yii/ /app/yii/
 
 RUN mkdir -p /app/trunk/assets \
@@ -11,9 +10,9 @@ RUN mkdir -p /app/trunk/assets \
              /app/trunk/protected/uploads \
     && ln -sf trunk web \
     && chown -R www-data:www-data /app/trunk/assets \
-                                 /app/trunk/protected/runtime \
-                                 /app/trunk/protected/uploads \
-    && chmod -R 755 /app/trunk/assets \
+                                  /app/trunk/protected/runtime \
+                                  /app/trunk/protected/uploads \
+    && chmod -R 777 /app/trunk/assets \
                     /app/trunk/protected/runtime \
                     /app/trunk/protected/uploads
 
