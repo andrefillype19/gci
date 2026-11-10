@@ -77,29 +77,13 @@ resource "aws_route_table_association" "public_assoc" {
 }
 
 # =====================================================
-# NAT GATEWAY
+# SAÍDA PARA INTERNET DA SUBNET PRIVADA
+# -----------------------------------------------------
+# Sem NAT Gateway (cobrado por hora, fora do Free Tier).
+# A EC2 da aplicação (subnet pública) atua como NAT
+# instance: source_dest_check = false + MASQUERADE no
+# user_data. Ver aws_instance.app_server.
 # =====================================================
-
-resource "aws_eip" "nat_eip" {
-  domain = "vpc"
-
-  tags = {
-    Name = "gci-nat-eip"
-  }
-}
-
-resource "aws_nat_gateway" "gci_nat" {
-  allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public_subnet.id
-
-  tags = {
-    Name = "gci-nat-gateway"
-  }
-
-  depends_on = [
-    aws_internet_gateway.gci_igw
-  ]
-}
 
 # =====================================================
 # TABELA DE ROTAS PRIVADA
@@ -109,8 +93,8 @@ resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.gci_vpc.id
 
   route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.gci_nat.id
+    cidr_block           = "0.0.0.0/0"
+    network_interface_id = aws_instance.app_server.primary_network_interface_id
   }
 
   tags = {

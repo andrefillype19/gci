@@ -41,7 +41,7 @@ for i in $(seq 1 30); do
         echo "Saída para internet OK."
         break
     fi
-    echo "Aguardando NAT Gateway... ($i/30)"
+    echo "Aguardando saída via NAT instance (app_server)... ($i/30)"
     sleep 10
 done
 

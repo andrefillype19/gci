@@ -77,7 +77,7 @@ resource "aws_instance" "postgres_db" {
 
   depends_on = [
     aws_route_table_association.private_assoc,
-    aws_nat_gateway.gci_nat,
+    aws_instance.app_server,
     aws_vpc_endpoint.s3,
     aws_iam_role_policy_attachment.ssm_policy,
     aws_iam_role_policy.postgres_s3_read,
@@ -106,11 +106,19 @@ resource "aws_instance" "app_server" {
 
   key_name = var.key_name
 
+  # Necessário para atuar como NAT instance da subnet privada
+  # (substitui o NAT Gateway, que não entra no Free Tier).
+  source_dest_check = false
+
   root_block_device {
     volume_size = 20
     volume_type = "gp3"
     encrypted   = true
   }
+
+  # user_data só roda no primeiro boot: a configuração de NAT
+  # abaixo exige recriar a instância para ser aplicada.
+  user_data_replace_on_change = true
 
   user_data = <<-EOF
     #!/bin/bash
@@ -119,6 +127,49 @@ resource "aws_instance" "app_server" {
     set -ex
 
     export DEBIAN_FRONTEND=noninteractive
+
+    # =================================================
+    # NAT INSTANCE para a subnet privada (PostgreSQL)
+    # Roda como serviço systemd para sobreviver a reboot.
+    # =================================================
+    cat > /usr/local/sbin/gci-nat.sh <<'NAT'
+    #!/bin/bash
+    set -e
+    PRIVATE_CIDR="${aws_subnet.private_subnet.cidr_block}"
+    IFACE=$(ip route show default | awk '{print $5; exit}')
+
+    sysctl -w net.ipv4.ip_forward=1
+
+    iptables -t nat -C POSTROUTING -s "$PRIVATE_CIDR" -o "$IFACE" -j MASQUERADE 2>/dev/null || \
+      iptables -t nat -A POSTROUTING -s "$PRIVATE_CIDR" -o "$IFACE" -j MASQUERADE
+
+    iptables -C FORWARD -s "$PRIVATE_CIDR" -o "$IFACE" -j ACCEPT 2>/dev/null || \
+      iptables -I FORWARD 1 -s "$PRIVATE_CIDR" -o "$IFACE" -j ACCEPT
+
+    iptables -C FORWARD -d "$PRIVATE_CIDR" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
+      iptables -I FORWARD 1 -d "$PRIVATE_CIDR" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    NAT
+    chmod 0755 /usr/local/sbin/gci-nat.sh
+
+    echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-gci-nat.conf
+
+    cat > /etc/systemd/system/gci-nat.service <<'UNIT'
+    [Unit]
+    Description=GCI - NAT da subnet privada
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    ExecStart=/usr/local/sbin/gci-nat.sh
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+
+    systemctl daemon-reload
+    systemctl enable --now gci-nat.service
 
     apt-get update -y
     apt-get install -y curl git
