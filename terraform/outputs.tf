@@ -1,14 +1,24 @@
 output "app_public_ip" {
-  description = "IP Público da EC2 da Aplicação (Use para SSH e k3s)"
+  description = "IP público da aplicação"
   value       = aws_instance.app_server.public_ip
 }
 
 output "db_private_ip" {
-  description = "IP Privado da EC2 do PostgreSQL (Substitua este IP no k8s/base/secret.yaml)"
+  description = "IP privado do PostgreSQL"
   value       = aws_instance.postgres_db.private_ip
 }
 
 output "postgres_private_ip" {
-  description = "IP privado da instancia do PostgreSQL para usar no DB_HOST"
+  description = "Endereço para DB_HOST"
   value       = aws_instance.postgres_db.private_ip
+}
+
+output "db_instance_id" {
+  description = "ID da EC2 PostgreSQL para comandos SSM"
+  value       = aws_instance.postgres_db.id
+}
+
+output "db_artifacts_bucket" {
+  description = "Bucket S3 para os arquivos de instalação e restauração"
+  value       = aws_s3_bucket.db_artifacts.bucket
 }

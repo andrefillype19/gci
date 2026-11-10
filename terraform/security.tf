@@ -1,7 +1,10 @@
-# Security Group da Aplicacao (Subnet Publica)
+# =====================================================
+# SECURITY GROUP DA APLICAÇÃO
+# =====================================================
+
 resource "aws_security_group" "app_sg" {
   name        = "gci-app-sg"
-  description = "Permite trafego HTTP, HTTPS e SSH para a aplicacao"
+  description = "Security Group da aplicação GCI"
   vpc_id      = aws_vpc.gci_vpc.id
 
   ingress {
@@ -13,9 +16,17 @@ resource "aws_security_group" "app_sg" {
   }
 
   ingress {
-    description = "HTTP Ingress"
+    description = "HTTP"
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -32,26 +43,19 @@ resource "aws_security_group" "app_sg" {
   }
 }
 
-# Security Group do Banco de Dados (Subnet Privada)
+# =====================================================
+# SECURITY GROUP DO POSTGRESQL
+# =====================================================
+
 resource "aws_security_group" "db_sg" {
   name        = "gci-db-sg"
-  description = "Permite conexoes do PostgreSQL vindas apenas do Security Group da Aplicacao"
+  description = "Acesso privado ao PostgreSQL"
   vpc_id      = aws_vpc.gci_vpc.id
 
-  # Libera a porta 5432 APENAS para quem esta associado ao app_sg
   ingress {
-    description     = "PostgreSQL a partir da EC2 App"
+    description     = "PostgreSQL somente da aplicacao"
     from_port       = 5432
     to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_sg.id]
-  }
-
-  # Libera SSH vindo do Bastion (EC2 App pública)
-  ingress {
-    description     = "SSH vindo da EC2 App (Bastion)"
-    from_port       = 22
-    to_port         = 22
     protocol        = "tcp"
     security_groups = [aws_security_group.app_sg.id]
   }
