@@ -4,7 +4,7 @@
 
 resource "aws_security_group" "app_sg" {
   name        = "gci-app-sg"
-  description = "Security Group da aplicação GCI"
+  description = "Security Group da aplicacao GCI"
   vpc_id      = aws_vpc.gci_vpc.id
 
   ingress {
