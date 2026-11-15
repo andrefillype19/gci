@@ -303,7 +303,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(k6_session_loss_total) or vector(0)",
+          "expr": "sum(max_over_time(k6_session_loss_total[$__range])) or vector(0)",
           "legendFormat": "Perdas"
         }
       ],
@@ -350,7 +350,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(k6_file_verify_failure_total) or vector(0)",
+          "expr": "sum(max_over_time(k6_file_verify_failure_total[$__range])) or vector(0)",
           "legendFormat": "Falhas"
         }
       ],

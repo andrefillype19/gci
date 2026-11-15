@@ -253,11 +253,24 @@ function verifyFile(activityId) {
   }, { flow: "arquivo" });
 }
 
+// O Prometheus so cria a serie de um Counter quando ele e incrementado; sem um valor 0 inicial,
+// a primeira falha aparece como serie nova com valor 1 e rate()/increase() nao a enxergam.
+// Emitir 0 para cada motivo conhecido (dentro do mesmo group) cria as series desde o inicio.
+function initFailureCounters() {
+  ["login_failed", "session_lost", "http_500", "unexpected_status"].forEach((reason) =>
+    sessionLoss.add(0, { flow: "session", reason }));
+  ["login_failed", "event_failed", "upload_failed"].forEach((reason) =>
+    uploadFailure.add(0, { flow: "upload", reason }));
+  ["login_failed", "session_lost", "http_500", "activity_failed"].forEach((reason) =>
+    fileVerifyFailure.add(0, { flow: "arquivo", reason }));
+}
+
 export function sessionTest() {
   const jar = http.cookieJar();
   jar.clear(BASE_URL);
 
   group("session", () => {
+    initFailureCounters();
     const anonymous = http.get(PROFILE_URL, requestParams("session", "profile-anon", jar));
     check(anonymous, {
       "anonimo redireciona para login": (r) => {
@@ -301,6 +314,7 @@ export function uploadTest() {
   jar.clear(BASE_URL);
 
   group("upload", () => {
+    initFailureCounters();
     if (!login(jar, "upload")) {
       uploadFailure.add(1, { flow: "upload", reason: "login_failed" });
       return;
