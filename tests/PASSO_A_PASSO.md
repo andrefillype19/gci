@@ -110,7 +110,7 @@ k6 run -o experimental-prometheus-rw --tag scenario_name=nfs-round-robin-hpa k6/
 | `BASE_URL` | obrigatoria | IP publico da EC2 (sem barra final) |
 | `PROFILE` | `steady` | `steady` (2m + 10m + 2m), `hpa` (subida, pico, queda, cooldown) ou `smoke` |
 | `VUS_SESSION` / `VUS_UPLOAD` | 10 / 5 | VUs de cada fluxo |
-| `HPA_RAMP_UP`, `HPA_PEAK`, `HPA_RAMP_DOWN`, `HPA_COOLDOWN`, `HPA_LOW_FRACTION` | 3m, 5m, 2m, 6m, 0.1 | duracoes do perfil `hpa` |
+| `HPA_RAMP_UP`, `HPA_PEAK`, `HPA_RAMP_DOWN`, `HPA_COOLDOWN`, `HPA_LOW_FRACTION` | 3m, 6m, 2m, 6m, 0.1 | duracoes do perfil `hpa` |
 
 Opcional: `--summary-export results\<nome>.json` guarda o resumo do k6 (a pasta `results/` nao e versionada).
 
@@ -163,5 +163,5 @@ Veja a secao "O que o teste avalia" no [README](README.md). No Grafana, ajuste o
 - Nos overlays NFS o PHP grava sessoes em `/sessions` (ConfigMap `gci-php-overrides` sobrescrito) e os uploads em `protected/uploads`, ambos no NFS. Um initContainer copia os PDFs que vem na imagem para o volume NFS.
 - O no do k3s precisa de `nfs-common` (o workflow 2 instala).
 - Afinidade de sessao (sticky) usa annotations no Service (`GCI_STICKY`), nao no Ingress.
-- HPA (1 a 3 replicas, CPU 70% sobre request de 250m) nao entra nos overlays. Para o teste de HPA:
-  `kubectl apply -f deploy/base/app/hpa.yaml` (escala a 1 replica ao ficar ocioso) e, ao terminar, `kubectl delete hpa gci-app -n app` e `kubectl scale deploy/gci-app -n app --replicas=2`.
+- O HPA (1 a 3 replicas, CPU 70% sobre request de 250m) esta na base e vale nos 4 cenarios. O Deployment nao fixa `replicas`; antes de cada execucao deixe em 1 replica (`kubectl scale deploy/gci-app -n app --replicas=1`) e aguarde o rollout.
+- Padroes do k6 apos calibracao por extrapolacao: `VUS_SESSION=30`, `VUS_UPLOAD=15`, `HPA_PEAK=6m` (perfil `hpa`, cerca de 17 min).

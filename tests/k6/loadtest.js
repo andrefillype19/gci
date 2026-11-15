@@ -31,8 +31,8 @@ export const uploadFailure = new Counter("upload_failure");
 export const fileVerifySuccess = new Counter("file_verify_success");
 export const fileVerifyFailure = new Counter("file_verify_failure");
 
-const VUS_SESSION = Number(__ENV.VUS_SESSION || 10);
-const VUS_UPLOAD = Number(__ENV.VUS_UPLOAD || 5);
+const VUS_SESSION = Number(__ENV.VUS_SESSION || 30);
+const VUS_UPLOAD = Number(__ENV.VUS_UPLOAD || 15);
 
 // PROFILE:
 //   steady (padrao) - 2m subida, 10m platao, 2m descida (comparar os 4 cenarios)
@@ -44,7 +44,7 @@ const SMOKE = PROFILE === "smoke";
 
 // Perfil "hpa": duracoes e fracao da carga mantida durante o cooldown.
 const HPA_RAMP_UP = __ENV.HPA_RAMP_UP || "3m";
-const HPA_PEAK = __ENV.HPA_PEAK || "5m";
+const HPA_PEAK = __ENV.HPA_PEAK || "6m";
 const HPA_RAMP_DOWN = __ENV.HPA_RAMP_DOWN || "2m";
 const HPA_COOLDOWN = __ENV.HPA_COOLDOWN || "6m";
 const HPA_LOW_FRACTION = Number(__ENV.HPA_LOW_FRACTION || 0.1);

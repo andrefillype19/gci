@@ -5,4 +5,5 @@ resources:
   - service.yaml
   - secret.yaml
   - configmap-php.yaml
+  - hpa.yaml
 #  - regcred.yaml
