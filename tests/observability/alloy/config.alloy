@@ -1,0 +1,74 @@
+// Grafana Alloy LOCAL: le logs e eventos do k3s pela API (via tunel SSH),
+// sem instalar nenhum agente no cluster. Envia tudo ao Loki local.
+// Interface de depuracao: http://localhost:12345
+
+// ---------- Logs dos pods do namespace "app" ----------
+discovery.kubernetes "pods" {
+  role            = "pod"
+  kubeconfig_file = "/kube/kubeconfig-container"
+
+  namespaces {
+    names = ["app"]
+  }
+}
+
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "namespace"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    target_label  = "app"
+  }
+}
+
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pods.output
+  forward_to = [loki.write.local.receiver]
+
+  client {
+    kubeconfig_file = "/kube/kubeconfig-container"
+  }
+}
+
+// ---------- Eventos do cluster (escala do HPA, pulls, falhas de mount) ----------
+loki.source.kubernetes_events "events" {
+  namespaces = ["app"]
+  forward_to = [loki.process.events.receiver]
+
+  client {
+    kubeconfig_file = "/kube/kubeconfig-container"
+  }
+}
+
+loki.process "events" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.static_labels {
+    values = {
+      source = "k3s_events",
+    }
+  }
+}
+
+// ---------- Destino ----------
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+
+  external_labels = {
+    cluster = "gci-k3s",
+  }
+}

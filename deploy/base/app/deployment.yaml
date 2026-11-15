@@ -32,3 +32,12 @@ spec:
           envFrom:
             - secretRef:
                 name: app-database-credentials
+          volumeMounts:
+            - name: php-overrides
+              mountPath: /usr/local/etc/php/conf.d/zzz-gci-warnings.ini
+              subPath: zzz-gci-warnings.ini
+              readOnly: true
+      volumes:
+        - name: php-overrides
+          configMap:
+            name: gci-php-overrides

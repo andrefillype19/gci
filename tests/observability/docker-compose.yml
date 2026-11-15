@@ -1,0 +1,120 @@
+# Stack de observabilidade LOCAL para os testes do GCI na AWS.
+# Tudo roda no seu PC; a AWS so e acessada por um tunel SSH (servico "tunnel").
+#
+#   k6 (host) ---remote write---> Prometheus <--scrape-- tunnel --> exporters / API do k3s
+#                                     ^                    ^
+#   kube-state-metrics -- API k3s ----+     Alloy -- API k3s --> Loki
+#   Grafana le Prometheus + Loki
+#
+# Uso: ver tests/scripts/stack.ps1  (up | down | status | logs | reset)
+
+name: gci-observability
+
+services:
+  tunnel:
+    build: ./tunnel
+    restart: unless-stopped
+    environment:
+      APP_IP: ${APP_IP:?defina APP_IP em observability/.env (rode scripts/sync-aws.ps1)}
+      SSH_USER: ${SSH_USER:-ubuntu}
+      DB_IP: ${DB_IP:-10.0.2.153}
+      NFS_IP: ${NFS_IP:-}
+    volumes:
+      - ${SSH_KEY_PATH:?defina SSH_KEY_PATH em observability/.env}:/ssh/key:ro
+    ports:
+      # API do k3s para o kubectl do host (kubeconfig-host)
+      - "127.0.0.1:6443:6443"
+    healthcheck:
+      # Saudavel quando o encaminhamento da API do k3s esta de pe (SSH conectado)
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6443"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-remote-write-receiver
+      - --web.enable-admin-api
+      - --enable-feature=native-histograms
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../.local/k3s:/kube:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      tunnel:
+        condition: service_healthy
+
+  kube-state-metrics:
+    image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0
+    restart: unless-stopped
+    command:
+      - --kubeconfig=/kube/kubeconfig-container
+      - --namespaces=app
+      - --port=8080
+    volumes:
+      - ../.local/k3s:/kube:ro
+    depends_on:
+      tunnel:
+        condition: service_healthy
+
+  loki:
+    image: grafana/loki:3.4.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  alloy:
+    image: grafana/alloy:v1.8.1
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ../.local/k3s:/kube:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:12345:12345"
+    depends_on:
+      tunnel:
+        condition: service_healthy
+      loki:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: dark
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/gci-escalabilidade.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+  grafana-data:

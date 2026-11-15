@@ -1,0 +1,6 @@
+# Segredos e estado local da suite (nunca commitar)
+.local/
+observability/.env
+
+# Resultados de execucao
+results/

@@ -1,0 +1,53 @@
+# Prometheus LOCAL. Recebe as metricas do k6 por remote write (/api/v1/write)
+# e coleta a AWS atraves do servico "tunnel" (SSH).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Estado do cluster: replicas, HPA, limites e requests dos pods (namespace app)
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["kube-state-metrics:8080"]
+
+  # CPU/memoria/rede por pod (cAdvisor), lidos pelo proxy da API do k3s.
+  # O nome do no e o K3S_NODE_NAME definido no user_data da EC2 da aplicacao.
+  # Os certificados sao extraidos do kubeconfig por scripts/sync-aws.ps1.
+  - job_name: cadvisor
+    scheme: https
+    metrics_path: /api/v1/nodes/gci-app-server/proxy/metrics/cadvisor
+    tls_config:
+      ca_file: /kube/ca.crt
+      cert_file: /kube/client.crt
+      key_file: /kube/client.key
+      server_name: localhost
+    static_configs:
+      - targets: ["tunnel:6443"]
+        labels:
+          node: gci-app-server
+
+  # ---- Hosts (precisam do node_exporter instalado nas EC2) ----
+  - job_name: node-app
+    static_configs:
+      - targets: ["tunnel:19100"]
+        labels: { host: app, role: application }
+
+  - job_name: node-db
+    static_configs:
+      - targets: ["tunnel:19101"]
+        labels: { host: db, role: database }
+
+  - job_name: node-nfs
+    static_configs:
+      - targets: ["tunnel:19102"]
+        labels: { host: nfs, role: storage }
+
+  # ---- PostgreSQL (precisa do postgres_exporter na EC2 do banco) ----
+  - job_name: postgres
+    static_configs:
+      - targets: ["tunnel:19187"]
+        labels: { host: db }

@@ -4,4 +4,5 @@ resources:
   - deployment.yaml
   - service.yaml
   - secret.yaml
+  - configmap-php.yaml
 #  - regcred.yaml
