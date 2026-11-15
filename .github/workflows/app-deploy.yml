@@ -2,12 +2,21 @@ name: "2. Application Build & Deploy (k3s)"
 
 on:
   workflow_dispatch:
+    inputs:
+      overlay:
+        description: "Overlay de deploy/overlays/ a aplicar"
+        type: choice
+        default: no-nfs-round-robin
+        options:
+          - no-nfs-round-robin
+          - no-nfs-sticky
+          - nfs-round-robin
+          - nfs-sticky
   push:
     branches: [ "main" ]
     paths:
       - 'app/**'
       - 'deploy/**'       # Monitora toda a estrutura de manifestos (base, common, overlays)
-      - 'nfs-server/**'
 
 jobs:
   build-and-deploy:
@@ -35,14 +44,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/gci:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/gci:${{ github.sha }}
 
-      # 2. Build do Servidor NFS
-      - name: Build and Push NFS Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./nfs-server
-          file: ./nfs-server/Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gci-file-server:latest
+      # O servidor NFS agora e uma EC2 propria (terraform/nfs.tf); nao ha mais imagem NFS.
 
       # 3. Configurar Credenciais AWS
       - name: Configurar Credenciais AWS
@@ -81,12 +83,18 @@ jobs:
 
       # 6. Compila os manifestos via Kustomize sem restrição de diretório e aplica no cluster
       - name: Deploy to k3s via SSH
+        env:
+          OVERLAY: ${{ github.event.inputs.overlay || 'no-nfs-round-robin' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ steps.get-ip.outputs.ec2_ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: OVERLAY
           script: |
+            # 0. Cliente NFS no no do k3s (necessario para montar os PVs NFS)
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nfs-common
+
             # 1. Identifica o binário do k3s
             K3S_BIN=$(command -v k3s || echo "/usr/local/bin/k3s")
 
@@ -94,7 +102,7 @@ jobs:
             sudo $K3S_BIN kubectl create namespace app --dry-run=client -o yaml | sudo $K3S_BIN kubectl apply -f -
 
             # 3. Entra na pasta do overlay
-            cd /home/ubuntu/gci/deploy/overlays/no-nfs-round-robin
+            cd "/home/ubuntu/gci/deploy/overlays/${OVERLAY:-no-nfs-round-robin}"
 
             # 4. Compila liberando navegação entre pastas (../../) e aplica via kubectl
             sudo $K3S_BIN kubectl kustomize . --load-restrictor LoadRestrictionsNone | sudo $K3S_BIN kubectl apply -f - -n app

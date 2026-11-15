@@ -1,0 +1,9 @@
+# O Traefik le a afinidade de sessao nas annotations do Service (nao do Ingress).
+apiVersion: v1
+kind: Service
+metadata:
+  name: gci-app
+  namespace: app
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "GCI_STICKY"

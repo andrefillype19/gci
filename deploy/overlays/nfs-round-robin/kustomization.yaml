@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
   - ../../base/app
   - ../../common/ingress-rr.yaml
+  - ../../common/nfs-pv.yaml
   - ../../common/nfs-pvc.yaml
 patchesStrategicMerge:
   - ../../common/deployment-nfs-patch.yaml
+  - ../../common/configmap-php-nfs-patch.yaml

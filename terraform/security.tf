@@ -95,3 +95,39 @@ resource "aws_security_group" "db_sg" {
     Name = "gci-db-sg"
   }
 }
+# =====================================================
+# SECURITY GROUP DO SERVIDOR NFS
+# =====================================================
+
+resource "aws_security_group" "nfs_sg" {
+  name        = "gci-nfs-sg"
+  description = "Acesso privado ao servidor NFS"
+  vpc_id      = aws_vpc.gci_vpc.id
+
+  ingress {
+    description     = "NFSv4 somente da aplicacao"
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  ingress {
+    description     = "node_exporter somente da aplicacao (tunel de observabilidade)"
+    from_port       = 9100
+    to_port         = 9100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "gci-nfs-sg"
+  }
+}

@@ -4,8 +4,22 @@ metadata:
   name: nfs-uploads-pvc
   namespace: app
 spec:
-  accessModes:
-    - ReadWriteMany
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: gci-nfs-uploads-pv
   resources:
     requests:
       storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-sessions-pvc
+  namespace: app
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: gci-nfs-sessions-pv
+  resources:
+    requests:
+      storage: 1Gi

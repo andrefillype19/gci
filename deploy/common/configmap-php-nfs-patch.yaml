@@ -1,0 +1,10 @@
+# Cenarios com NFS: sessoes PHP gravadas no volume compartilhado (/sessions).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gci-php-overrides
+  namespace: app
+data:
+  zzz-gci-warnings.ini: |
+    error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_WARNING
+    session.save_path = /sessions

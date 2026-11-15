@@ -3,10 +3,6 @@ kind: Ingress
 metadata:
   name: gci-app-ingress
   namespace: app
-  annotations:
-    # Traefik / Nginx Ingress Sticky Session
-    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
-    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "GCI_STICKY"
 spec:
   rules:
     - http:

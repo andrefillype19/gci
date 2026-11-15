@@ -153,6 +153,15 @@ Veja a secao "O que o teste avalia" no [README](README.md). No Grafana, ajuste o
 | Grafana sem logs | `http://localhost:12345` (Alloy) mostra erros; confira o tunel e o kubeconfig. |
 | k6: "Defina BASE_URL" | `$env:BASE_URL = 'http://<ip>'`. |
 | Metricas do k6 ausentes no Grafana | k6 escreve direto em `127.0.0.1:9090` (sem tunel); confirme o Prometheus `Ready` e o `-o experimental-prometheus-rw`. |
-| `session_loss` alto com NFS | PVC de sessoes montado em `/tmp`? Pod removido pelo HPA durante o teste? |
+| `session_loss` alto com NFS | `session.save_path=/sessions` ativo (ConfigMap do overlay NFS) e PVC de sessoes montado? Pod removido pelo HPA durante o teste? |
 | `file_verify_failure` alto com NFS | PDF base no NFS? Permissao `82:82` nos diretorios exportados? |
 | Reset falha ao ler o Secret | `sudo k3s kubectl get secret app-database-credentials -n app` na EC2. |
+
+## Notas: NFS em EC2 propria e HPA
+
+- O servidor NFS e a EC2 `gci-nfs-server` (`terraform/nfs.tf`, IP fixo `10.0.2.60`, NFSv4.1, exports `/uploads` e `/sessions`). Depois de criada, preencha `NFS_IP=10.0.2.60` em `observability/.env` e rode `scripts/stack.ps1 up` para o tunel abrir a porta 19102 (`node-nfs`).
+- Nos overlays NFS o PHP grava sessoes em `/sessions` (ConfigMap `gci-php-overrides` sobrescrito) e os uploads em `protected/uploads`, ambos no NFS. Um initContainer copia os PDFs que vem na imagem para o volume NFS.
+- O no do k3s precisa de `nfs-common` (o workflow 2 instala).
+- Afinidade de sessao (sticky) usa annotations no Service (`GCI_STICKY`), nao no Ingress.
+- HPA (1 a 3 replicas, CPU 70% sobre request de 250m) nao entra nos overlays. Para o teste de HPA:
+  `kubectl apply -f deploy/base/app/hpa.yaml` (escala a 1 replica ao ficar ocioso) e, ao terminar, `kubectl delete hpa gci-app -n app` e `kubectl scale deploy/gci-app -n app --replicas=2`.

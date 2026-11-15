@@ -1,0 +1,38 @@
+# PersistentVolumes NFSv4.1 apontando para a EC2 do servidor NFS (terraform/nfs.tf).
+# O IP deve coincidir com var.nfs_private_ip (padrao 10.0.2.60).
+# Requer o pacote nfs-common no no do k3s (instalado pelo workflow 2).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gci-nfs-uploads-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [nfsvers=4.1, hard, noatime]
+  nfs:
+    server: 10.0.2.60
+    path: /uploads
+  claimRef:
+    namespace: app
+    name: nfs-uploads-pvc
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gci-nfs-sessions-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [nfsvers=4.1, hard, noatime]
+  nfs:
+    server: 10.0.2.60
+    path: /sessions
+  claimRef:
+    namespace: app
+    name: nfs-sessions-pvc

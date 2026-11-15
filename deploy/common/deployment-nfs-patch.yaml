@@ -6,12 +6,26 @@ metadata:
 spec:
   template:
     spec:
+      # A imagem traz PDFs de certificados em protected/uploads; o mount NFS os esconderia.
+      # Copia (sem sobrescrever) para o volume NFS antes de a aplicacao subir.
+      initContainers:
+        - name: seed-uploads
+          image: andrefillype98/gci:latest
+          command: ["sh", "-c", "cp -an /app/trunk/protected/uploads/. /nfs-uploads/"]
+          volumeMounts:
+            - name: nfs-uploads
+              mountPath: /nfs-uploads
       containers:
         - name: gci-app
           volumeMounts:
             - name: nfs-uploads
               mountPath: /app/trunk/protected/uploads
+            - name: nfs-sessions
+              mountPath: /sessions
       volumes:
         - name: nfs-uploads
           persistentVolumeClaim:
             claimName: nfs-uploads-pvc
+        - name: nfs-sessions
+          persistentVolumeClaim:
+            claimName: nfs-sessions-pvc

@@ -46,3 +46,15 @@ variable "db_password" {
   default     = "admin"
   sensitive   = true
 }
+
+variable "nfs_instance_type" {
+  description = "Tipo da EC2 do servidor NFS"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "nfs_private_ip" {
+  description = "IP privado fixo da EC2 NFS (usado nos PVs em deploy/common/nfs-pv.yaml)"
+  type        = string
+  default     = "10.0.2.60"
+}
