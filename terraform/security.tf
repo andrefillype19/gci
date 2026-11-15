@@ -68,6 +68,22 @@ resource "aws_security_group" "db_sg" {
     security_groups = [aws_security_group.app_sg.id]
   }
 
+  ingress {
+    description     = "node_exporter somente da aplicacao (tunel de observabilidade)"
+    from_port       = 9100
+    to_port         = 9100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
+  ingress {
+    description     = "postgres_exporter somente da aplicacao (tunel de observabilidade)"
+    from_port       = 9187
+    to_port         = 9187
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
