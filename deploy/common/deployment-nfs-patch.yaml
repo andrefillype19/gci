@@ -11,7 +11,7 @@ spec:
       initContainers:
         - name: seed-uploads
           image: andrefillype98/gci:latest
-          command: ["sh", "-c", "cp -an /app/trunk/protected/uploads/. /nfs-uploads/"]
+          command: ["sh", "-c", "cp -au /app/trunk/protected/uploads/. /nfs-uploads/"]
           volumeMounts:
             - name: nfs-uploads
               mountPath: /nfs-uploads
