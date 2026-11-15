@@ -427,6 +427,15 @@
             "drawStyle": "line",
             "fillOpacity": 15,
             "lineWidth": 2
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": [
@@ -508,6 +517,15 @@
             "drawStyle": "line",
             "fillOpacity": 15,
             "lineWidth": 2
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": [
@@ -601,6 +619,15 @@
               "mode": "normal"
             },
             "fillOpacity": 60
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": [
@@ -732,6 +759,15 @@
             "drawStyle": "line",
             "fillOpacity": 10,
             "lineWidth": 2
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         }
       },
@@ -777,6 +813,15 @@
             "drawStyle": "line",
             "fillOpacity": 20,
             "lineWidth": 2
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         }
       },
@@ -808,7 +853,7 @@
     {
       "id": 17,
       "type": "timeseries",
-      "title": "Uso de CPU por Pod da Aplicacao (% do limite de 0,25 core)",
+      "title": "Uso de CPU por Pod da Aplicacao (% do limite de 0,5 core)",
       "description": "100% = 0,25 core; 0,125 core = 50%; linha tracejada em 70% = 0,175 core, que tambem e o alvo do HPA. Mostra tambem se a carga esta equilibrada entre os pods (Round Robin) ou concentrada (Sticky Session).",
       "datasource": {
         "type": "prometheus",
@@ -831,7 +876,6 @@
         "defaults": {
           "unit": "percent",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -842,7 +886,8 @@
             "thresholdsStyle": {
               "mode": "dashed",
               "lineWidth": 1
-            }
+            },
+            "axisSoftMax": 100
           },
           "thresholds": {
             "mode": "absolute",
@@ -903,6 +948,15 @@
             "drawStyle": "line",
             "fillOpacity": 10,
             "lineWidth": 2
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         }
       },
@@ -971,6 +1025,15 @@
             "fillOpacity": 10,
             "lineWidth": 2,
             "lineInterpolation": "stepAfter"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
           }
         },
         "overrides": [
@@ -1059,7 +1122,6 @@
         "defaults": {
           "unit": "percent",
           "min": 0,
-          "max": 100,
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 15,
@@ -1067,7 +1129,8 @@
             "thresholdsStyle": {
               "mode": "dashed",
               "lineWidth": 1
-            }
+            },
+            "axisSoftMax": 100
           },
           "thresholds": {
             "mode": "absolute",
@@ -1199,7 +1262,6 @@
         "defaults": {
           "unit": "bytes",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1218,10 +1280,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1269,7 +1327,6 @@
         "defaults": {
           "unit": "Bps",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1288,10 +1345,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1339,7 +1392,6 @@
         "defaults": {
           "unit": "Bps",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1358,10 +1410,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1405,7 +1453,6 @@
         "defaults": {
           "unit": "ops",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1424,10 +1471,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1548,7 +1591,6 @@
         "defaults": {
           "unit": "bytes",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1567,10 +1609,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1618,7 +1656,6 @@
         "defaults": {
           "unit": "Bps",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1637,10 +1674,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1683,7 +1716,6 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1702,10 +1734,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -1753,7 +1781,6 @@
         "defaults": {
           "unit": "ops",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -1772,10 +1799,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -2027,7 +2050,6 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -2046,10 +2068,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -2097,7 +2115,6 @@
         "defaults": {
           "unit": "Bps",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -2116,10 +2133,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
@@ -2163,7 +2176,6 @@
         "defaults": {
           "unit": "ops",
           "min": 0,
-          "max": 100,
           "color": {
             "mode": "palette-classic"
           },
@@ -2182,10 +2194,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 70
               }
             ]
           }
