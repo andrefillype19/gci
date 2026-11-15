@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gci-php-overrides
+  namespace: app
+  labels:
+    app.kubernetes.io/part-of: gci
+    app.kubernetes.io/component: application
+data:
+  # A biblioteca mPDF legada chama count() sobre string (ttfontsuni.php), o que gera um
+  # E_WARNING no PHP >= 7.2. Com YII_DEBUG=true o Yii converte o warning em erro 500 e
+  # a rota atividade/certpal (geracao do certificado) falha em qualquer cenario.
+  # Este arquivo carrega depois de zz-legacy-yii.ini (ordem alfabetica) e apenas
+  # remove E_WARNING da mascara; o codigo da aplicacao nao e alterado.
+  zzz-gci-warnings.ini: |
+    error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_WARNING
