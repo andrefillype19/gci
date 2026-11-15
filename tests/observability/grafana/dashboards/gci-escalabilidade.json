@@ -854,7 +854,7 @@
       "id": 17,
       "type": "timeseries",
       "title": "Uso de CPU por Pod da Aplicacao (% do limite de 0,5 core)",
-      "description": "100% = 0,25 core; 0,125 core = 50%; linha tracejada em 70% = 0,175 core, que tambem e o alvo do HPA. Mostra tambem se a carga esta equilibrada entre os pods (Round Robin) ou concentrada (Sticky Session).",
+      "description": "CPU de cada pod dividida pelo limite (0,5 core). Request = 0,25 core = 50% neste grafico. O eixo cresce acima de 100% se necessario.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1100,7 +1100,7 @@
       "id": 21,
       "type": "timeseries",
       "title": "Utilizacao Media de CPU vs Alvo do HPA (70% = 0,175 core)",
-      "description": "Request e limite do app = 0,25 core. 100% = 0,25 core. O HPA mira 70% de 0,25 core = 0,175 core. A linha tracejada marca esse alvo.",
+      "description": "CPU media dos pods dividida pelo request (0,25 core): 100% = 0,25 core. O HPA mira 70% (0,175 core) e pode passar de 100% ate o limite de 0,5 core (200%).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
