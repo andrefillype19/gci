@@ -20,7 +20,7 @@ variable "loadgen_instance_type" {
 variable "k6_version" {
   description = "Versao do k6 instalada no gerador (a mesma do Experimento 1), no formato vX.Y.Z"
   type        = string
-  default     = "v1.0.0"
+  default     = "v2.4.0"
 }
 
 variable "deadman_minutes" {

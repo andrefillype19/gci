@@ -33,8 +33,9 @@ Depois do merge, o passo **Terraform Apply** termina com os `Outputs`: copie `ag
 `app_private_ip` e `agents_private_ips`. Os IPs também aparecem no console (EC2 → Instâncias). Aguarde ~3 min
 para o `cloud-init` terminar nas 3 instâncias.
 
-Confirme a versão do k6 (a do Experimento 1): `terraform/experiment2.tf`, variável `k6_version` (padrão `v1.0.0`).
-Se a sua for outra, ajuste **antes** do merge: depois o `user_data` é ignorado de propósito, e a troca seria manual no gerador.
+O gerador instala o k6 mais recente na data do experimento (`k6_version` em `terraform/experiment2.tf`, `v2.4.0`),
+que pode diferir do usado no Experimento 1: registre as duas versões na metodologia. Depois do merge o `user_data` é
+ignorado de propósito, e trocar a versão seria manual no gerador.
 
 ## 2. Juntar os agents ao cluster
 
