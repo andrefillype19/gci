@@ -97,12 +97,13 @@ if [ -z "$PODS" ]; then
 fi
 
 for pod in $PODS; do
-  $K exec -n "$NS" "$pod" -c gci-app </dev/null -- sh -c \
+  # timeout: com o NFS fora do ar (F1) um exec em pod travado nunca retornaria.
+  timeout 60 $K exec -n "$NS" "$pod" -c gci-app </dev/null -- sh -c \
     'rm -f /app/trunk/protected/uploads/certificado-test-k6-*.pdf /app/trunk/protected/uploads/upload-vu*.pdf' \
     || echo "Aviso: nao foi possivel limpar uploads no pod $pod" >&2
 
   if [ "$KEEP_SESSIONS" -eq 0 ]; then
-    $K exec -n "$NS" "$pod" -c gci-app </dev/null -- sh -c 'rm -f /tmp/sess_*' \
+    timeout 60 $K exec -n "$NS" "$pod" -c gci-app </dev/null -- sh -c 'rm -f /tmp/sess_*' \
       || echo "Aviso: nao foi possivel limpar sessoes no pod $pod" >&2
   fi
 done

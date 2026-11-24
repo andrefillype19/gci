@@ -42,6 +42,12 @@ const VUS_UPLOAD = Number(__ENV.VUS_UPLOAD || 15);
 const PROFILE = __ENV.SMOKE === "1" ? "smoke" : (__ENV.PROFILE || "steady");
 const SMOKE = PROFILE === "smoke";
 
+// Perfil "steady": duracoes (padroes preservados: 2m + 10m + 2m). O Experimento 2 usa
+// STEADY_RAMP_UP=2m, STEADY_PLATEAU=5m e STEADY_RAMP_DOWN=1m (a medicao e so o platao).
+const STEADY_RAMP_UP = __ENV.STEADY_RAMP_UP || "2m";
+const STEADY_PLATEAU = __ENV.STEADY_PLATEAU || "10m";
+const STEADY_RAMP_DOWN = __ENV.STEADY_RAMP_DOWN || "2m";
+
 // Perfil "hpa": duracoes e fracao da carga mantida durante o cooldown.
 const HPA_RAMP_UP = __ENV.HPA_RAMP_UP || "3m";
 const HPA_PEAK = __ENV.HPA_PEAK || "6m";
@@ -68,9 +74,9 @@ function createStages(targetVUs) {
     return stages.filter((s) => !isZero(s.duration));
   }
   return [
-    { duration: "2m", target: targetVUs },
-    { duration: "10m", target: targetVUs },
-    { duration: "2m", target: 0 },
+    { duration: STEADY_RAMP_UP, target: targetVUs },
+    { duration: STEADY_PLATEAU, target: targetVUs },
+    { duration: STEADY_RAMP_DOWN, target: 0 },
   ];
 }
 
