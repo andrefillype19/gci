@@ -39,6 +39,14 @@ resource "aws_security_group" "app_sg" {
     cidr_blocks = [aws_subnet.private_subnet.cidr_block]
   }
 
+  ingress {
+    description = "Trafego entre os membros do SG (k3s, flannel, kubelet, node_exporter)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

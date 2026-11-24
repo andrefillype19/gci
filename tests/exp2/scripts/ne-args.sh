@@ -2,8 +2,8 @@
 # Configura o node_exporter (pacote prometheus-node-exporter do Ubuntu) com o coletor ethtool,
 # que expoe as metricas da ENA (bw_in_allowance_exceeded, bw_out_allowance_exceeded,
 # pps_allowance_exceeded), alem dos coletores nfs e nfsd. Idempotente. Rodar como root:
-#   ssh ... 'sudo bash -s' < ne-args.sh      (instancias com chave)
-#   ssm_run <instance-id> ne-args.sh         (banco e NFS, por SSM)
+#   sudo bash, depois colar o conteudo (server, por SSH)
+#   Session Manager do console (banco e NFS, sem chave): colar o conteudo
 set -e
 cat >/etc/default/prometheus-node-exporter <<'EOF'
 ARGS='--web.listen-address=:9100 --collector.ethtool --collector.nfs --collector.nfsd'

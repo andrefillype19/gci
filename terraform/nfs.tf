@@ -64,6 +64,11 @@ resource "aws_instance" "nfs_server" {
     aws_iam_role_policy_attachment.ssm_policy
   ]
 
+  # Evita recriar a instancia (e perder dados) quando a AMI do SSM for atualizada.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name    = "gci-nfs-server"
     Project = "GCI"
