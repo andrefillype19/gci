@@ -84,6 +84,11 @@ resource "aws_instance" "postgres_db" {
     aws_s3_object.db_init
   ]
 
+  # Evita recriar a instancia (e perder dados) quando a AMI do SSM for atualizada.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name    = "gci-postgres-db"
     Project = "GCI"
@@ -196,6 +201,11 @@ resource "aws_instance" "app_server" {
       --dry-run=client -o yaml | kubectl apply -f -
 
   EOF
+
+  # Evita recriar a instancia (e perder dados) quando a AMI do SSM for atualizada.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   tags = {
     Name    = "gci-app-server"

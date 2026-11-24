@@ -1,179 +1,140 @@
-# Experimento 2: montagem da AWS (3 nós k3s + gerador de carga na VPC)
+# Experimento 2: provisionamento da AWS (3 nós k3s + gerador de carga na VPC)
 
-Comandos **manuais**, em bash (Git Bash, WSL, Linux ou macOS), a partir da pasta `tests/exp2`.
-Os passos marcados com **[CRIA]** ou **[ALTERA]** mudam a AWS; os demais são só leitura.
-Região `us-east-2`. Não rode `terraform apply`: o estado é remoto e os recursos abaixo são manuais
-(ver a seção 11 para a conversão futura).
+Os recursos novos (2 agents, o gerador, o IAM do gerador e uma regra do Security Group) são criados pelo
+**Terraform**, por pull request: o PR mostra o `plan`, e o merge no `main` aplica sozinho (`-auto-approve`).
+Nada de AWS CLI no seu computador. O que sobra de manual é pequeno: juntar os agents ao cluster, configurar o
+`node_exporter` nas instâncias antigas e preparar o acesso do gerador ao cluster.
 
-Limite de tempo da montagem: **90 min**. Anote `date` agora. Se passar disso sem 3 nós `Ready`,
-seguimos no nó único e registramos a limitação.
+Os comandos abaixo rodam **dentro das instâncias Linux** (por SSH ou Session Manager), então o terminal do seu
+computador (PowerShell, Git Bash ou outro) tanto faz.
 
-```bash
-cd tests/exp2
-date
-export KEY="/caminho/para/key-gci.pem"
-source scripts/lib.sh
+Limite de tempo: **90 min** a partir do merge. Se passar disso sem 3 nós `Ready`, seguimos no nó único e
+registramos a limitação.
+
+Variáveis usadas abaixo: `$KEY` = caminho da `key-gci.pem`; `SRV_PUB` e `SRV_PRIV` = IPs do server;
+`AG1_PUB`, `AG2_PUB`, `GEN_PUB` = IPs públicos dos agents e do gerador; `NFS_PRIV`, `DB_PRIV` = IPs privados do NFS e do banco.
+
+## 1. Revisar o plan e dar o merge
+
+No PR, abra a execução **Infrastructure CI/CD (Terraform)** → passo **Terraform Plan**. O esperado é:
+
+```
+Plan: 7 to add, 1 to change, 0 to destroy.
 ```
 
-## 0. Pré-requisitos e permissões
+- 7 a criar: `aws_instance.k3s_agent` ×2, `aws_instance.loadgen`, `aws_iam_role.loadgen_role`,
+  `aws_iam_role_policy_attachment.loadgen_ssm`, `aws_iam_role_policy.loadgen_inline` e `aws_iam_instance_profile.loadgen_profile`.
+- 1 a alterar (in-place): `aws_security_group.app_sg`, com a regra entre membros do próprio SG
+  (libera k3s 6443, kubelet 10250, flannel 8472/UDP e `node_exporter` 9100).
+- **0 a destruir.** Se aparecer `must be replaced` ou `destroy` em `postgres_db`, `nfs_server` ou `app_server`,
+  **não dê o merge** (perda do banco, do NFS ou do cluster) e me avise.
+
+Depois do merge, o passo **Terraform Apply** termina com os `Outputs`: copie `agents_public_ips`, `loadgen_public_ip`,
+`app_private_ip` e `agents_private_ips`. Os IPs também aparecem no console (EC2 → Instâncias). Aguarde ~3 min
+para o `cloud-init` terminar nas 3 instâncias.
+
+Confirme a versão do k6 (a do Experimento 1): `terraform/experiment2.tf`, variável `k6_version` (padrão `v1.0.0`).
+Se a sua for outra, ajuste **antes** do merge: depois o `user_data` é ignorado de propósito, e a troca seria manual no gerador.
+
+## 2. Juntar os agents ao cluster
+
+No **server** (`ssh -i $KEY ubuntu@SRV_PUB`):
 
 ```bash
-aws --version                       # AWS CLI v2
-aws sts get-caller-identity         # confira a conta e o usuário (campo Arn)
-aws iam list-attached-user-policies --user-name <USUARIO>   # esperado: AdministratorAccess
-k6 version                          # use a MESMA versão do Experimento 1 abaixo
-export K6_VERSION="v1.0.0"          # troque pela versão que você usou (formato vX.Y.Z)
+k3s --version | head -n1                                  # anote a versao, ex.: v1.31.4+k3s1
+hostname -I                                               # IP privado (SRV_PRIV)
+sudo cat /var/lib/rancher/k3s/server/node-token           # copie o token
 ```
 
-Se o usuário **não** for administrador, pule a seção 4 e o F1 fica com um passo manual
-(parar e religar o NFS), avisado na hora.
-
-## 1. Descobrir IDs e IPs (somente leitura)
+Em **cada agent** (`ssh -i $KEY ubuntu@AG1_PUB`, depois `AG2_PUB`), trocando `<VERSAO>`, `<SRV_PRIV>`, `<TOKEN>` e o nome do nó
+(`gci-agent-1` e `gci-agent-2`). O token não deve ficar no histórico do shell:
 
 ```bash
-bash scripts/discover.sh
-source .local/env.sh
+set +o history
+curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='<VERSAO>' K3S_URL='https://<SRV_PRIV>:6443' K3S_TOKEN='<TOKEN>' K3S_NODE_NAME='gci-agent-1' sh -
+set -o history
 ```
 
-Esperado agora: `SRV`, `DB` e `NFS` com ID e IPs; `AG1`, `AG2` e `GEN` vazios (ainda não existem).
-O IP privado do server (`SRV_PRIV`) é descoberto a cada sessão.
-
-## 2. Inspecionar o server (somente leitura)
+Validação, no server:
 
 ```bash
-sshx "$SRV_PUB" "k3s --version | head -n1; sudo k3s kubectl get nodes -o wide; df -h / | tail -n1; systemctl is-active prometheus-node-exporter"
-aws ec2 describe-instance-credit-specifications --instance-ids "$SRV_ID" "$DB_ID" "$NFS_ID" \
-  --query 'InstanceCreditSpecifications[].[InstanceId,CpuCredits]' --output text
-K3S_VERSION="$(sshx "$SRV_PUB" "k3s --version | awk 'NR==1{print \$3}'")"
-export KUBECTL_VERSION="${K3S_VERSION%%+*}"
-echo "k3s=$K3S_VERSION  kubectl=$KUBECTL_VERSION"
+sudo k3s kubectl get nodes -o wide -L kubernetes.io/hostname
 ```
 
-`CpuCredits` = `unlimited` (padrão dos `t3`) significa que não há limitação por créditos, mas há
-**cobrança** de créditos excedentes (US$ 0,05 por vCPU-hora). Registramos `CPUSurplusCreditBalance`.
+Esperado: 3 nós `Ready` (`gci-app-server`, `gci-agent-1`, `gci-agent-2`) e a coluna `HOSTNAME` igual ao nome do nó
+(o E0 e o E1 fixam o pod com `kubernetes.io/hostname=gci-agent-1`).
 
-## 3. [ALTERA] Regra do Security Group entre os membros
+## 3. `node_exporter` com ethtool nas instâncias antigas
 
-O `gci-app-sg` não permite tráfego entre seus próprios membros, o que bloqueia k3s (6443), kubelet
-(10250), flannel (8472/UDP) e `node_exporter` (9100). Uma regra auto-referenciada resolve todos:
+Os agents e o gerador já nascem configurados. No **server**, no **banco** e no **NFS** (estes dois sem chave: console AWS →
+EC2 → instância → Conectar → **Session Manager**), rode como root o conteúdo de [scripts/ne-args.sh](scripts/ne-args.sh).
+No server, por SSH: `sudo bash` e cole o script. Resumo do que ele faz:
 
 ```bash
-aws ec2 authorize-security-group-ingress --group-id "$SG_APP" --protocol -1 --source-group "$SG_APP"
+sudo tee /etc/default/prometheus-node-exporter >/dev/null <<'EOF'
+ARGS='--web.listen-address=:9100 --collector.ethtool --collector.nfs --collector.nfsd'
+EOF
+sudo systemctl restart prometheus-node-exporter
+curl -s localhost:9100/metrics | grep -E '^node_ethtool_(bw_in|bw_out|pps)_allowance_exceeded'
 ```
 
-(`InvalidPermission.Duplicate` significa que a regra já existe.) O `aws_security_group` do Terraform
-usa blocos `ingress` inline, que são autoritativos: um `apply` futuro apagaria esta regra, então ela
-deve entrar no `.tf` na conversão (seção 11).
+Esperado: 3 linhas com as métricas da ENA. Sem elas o controle de validade (limite de banda e de pacotes das `t3`) fica sem dado.
 
-## 4. [CRIA] IAM do gerador (permissões mínimas)
+## 4. Gerador: acesso ao cluster, rede e IAM
 
-O gerador precisa de `ssm:SendCommand` somente no servidor NFS (F1), leitura de EC2 e CloudWatch
-(`CPUSurplusCreditBalance`) e `ec2:StopInstances` por tag (para desligar a pilha ao fim).
-O ID do NFS entra na política: se a EC2 do NFS for recriada, refaça `put-role-policy`.
+`ssh -i $KEY ubuntu@GEN_PUB`, depois:
 
 ```bash
-sed -e "s/__ACCOUNT_ID__/$ACCOUNT_ID/g" -e "s/__NFS_ID__/$NFS_ID/g" -e "s/__REGION__/$AWS_DEFAULT_REGION/g" \
-  iam/loadgen-policy.json > .local/loadgen-policy.json
-
-aws iam create-role --role-name gci-loadgen-role --assume-role-policy-document file://iam/trust-policy.json
-aws iam attach-role-policy --role-name gci-loadgen-role --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-aws iam put-role-policy --role-name gci-loadgen-role --policy-name gci-loadgen-inline --policy-document file://.local/loadgen-policy.json
-aws iam create-instance-profile --instance-profile-name gci-loadgen-profile
-aws iam add-role-to-instance-profile --instance-profile-name gci-loadgen-profile --role-name gci-loadgen-role
-sleep 15   # propagacao do instance profile
+cloud-init status --wait
+k6 version; kubectl version --client; aws --version; df -h / | tail -n1
+systemctl is-active gci-deadman           # esperado: active (dead-man switch em contagem)
+aws sts get-caller-identity               # esperado: assumed-role/gci-loadgen-role
 ```
 
-## 5. [CRIA] Agents e gerador
-
-Todos `t3.small`, na mesma AZ e sub-rede pública do server, com o `gci-app-sg`. Agents usam o
-profile SSM existente (`gci-ssm-instance-profile`); o gerador, o novo. Disco gp3: 20 GB nos agents,
-30 GB no gerador (resultados brutos: reserve 2 a 3 GB livres).
+**Kubeconfig.** No server, `sudo cat /etc/rancher/k3s/k3s.yaml` e copie. No gerador, crie `~/.kube/config` com esse conteúdo
+(`mkdir -p ~/.kube && nano ~/.kube/config`), troque `https://127.0.0.1:6443` por `https://<SRV_PRIV>:6443` e proteja:
 
 ```bash
-sed -e "s/__K6_VERSION__/$K6_VERSION/" -e "s/__KUBECTL_VERSION__/$KUBECTL_VERSION/" \
-  userdata/loadgen.sh > .local/loadgen-userdata.sh
-
-launch() {   # launch <nome> <instance-profile> <user-data> <disco-GB> <servico>
-  aws ec2 run-instances --image-id "$AMI_ID" --instance-type t3.small --count 1 \
-    --subnet-id "$SUBNET_PUB" --security-group-ids "$SG_APP" --key-name key-gci \
-    --iam-instance-profile "Name=$2" --user-data "file://$3" \
-    --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$4,VolumeType=gp3,Encrypted=true}" \
-    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$1},{Key=Project,Value=GCI},{Key=Service,Value=$5}]" \
-    --query 'Instances[0].InstanceId' --output text
-}
-
-AG1_NEW="$(launch gci-agent-1 gci-ssm-instance-profile userdata/agent.sh 20 Application)"
-AG2_NEW="$(launch gci-agent-2 gci-ssm-instance-profile userdata/agent.sh 20 Application)"
-GEN_NEW="$(launch gci-loadgen gci-loadgen-profile .local/loadgen-userdata.sh 30 LoadGenerator)"
-aws ec2 wait instance-status-ok --instance-ids "$AG1_NEW" "$AG2_NEW" "$GEN_NEW"
-bash scripts/discover.sh && source .local/env.sh
-for ip in "$AG1_PUB" "$AG2_PUB" "$GEN_PUB"; do sshx "$ip" "cloud-init status --wait"; done
+chmod 600 ~/.kube/config
+kubectl get nodes -o wide                 # esperado: 3 nos Ready
 ```
 
-## 6. Juntar os agents ao cluster
+Se der erro de certificado (`x509`): `kubectl config set-cluster default --tls-server-name=kubernetes`.
+O kubeconfig é credencial de administrador do cluster: fica só no gerador, nunca no repositório.
 
-O token do k3s é lido do server e passado por pipe (não aparece na tela nem fica em arquivo local).
-O IP usado em `K3S_URL` é o **privado** do server.
+**Rede e código:**
 
 ```bash
-join() {   # join <ip-publico-do-agent> <nome-do-no>
-  sshx "$SRV_PUB" "sudo cat /var/lib/rancher/k3s/server/node-token" | tr -d '\r' |
-    sshx "$1" "read -r T; curl -sfL https://get.k3s.io | sudo INSTALL_K3S_VERSION='$K3S_VERSION' K3S_URL='https://$SRV_PRIV:6443' K3S_TOKEN=\"\$T\" K3S_NODE_NAME='$2' sh -"
-}
-join "$AG1_PUB" gci-agent-1
-join "$AG2_PUB" gci-agent-2
-sshx "$SRV_PUB" "sudo k3s kubectl get nodes -o wide -L kubernetes.io/hostname"
+curl -sI --max-time 5 http://<SRV_PRIV> | head -n1       # qualquer linha HTTP (404 do Traefik e normal sem a aplicacao)
+git clone https://github.com/andrefillype19/gci.git ~/gci
+for h in <SRV_PRIV> <AG1_PRIV> <AG2_PRIV> <DB_PRIV> <NFS_PRIV>; do
+  printf '%s ' $h; curl -fsS --max-time 5 http://$h:9100/metrics | grep -c '^node_ethtool_bw_in_allowance_exceeded'
+done                                                       # cada linha deve terminar em 1
 ```
 
-Esperado: 3 nós `Ready` (`gci-app-server`, `gci-agent-1`, `gci-agent-2`) e a coluna `HOSTNAME` igual ao nome
-do nó (o E0 e o E1 fixam o pod com `kubernetes.io/hostname=gci-agent-1`).
-
-## 7. Gerador: acesso ao cluster e ao Traefik
-
-O kubeconfig vai do server para o gerador por pipe (a chave PEM **não** vai para o gerador).
+**Permissão do F1** (executa um comando inofensivo no NFS por SSM):
 
 ```bash
-sshx "$SRV_PUB" "sudo cat /etc/rancher/k3s/k3s.yaml" | tr -d '\r' |
-  sed "s#https://127.0.0.1:6443#https://$SRV_PRIV:6443#" |
-  sshx "$GEN_PUB" "mkdir -p ~/.kube && cat > ~/.kube/config && chmod 600 ~/.kube/config"
-
-sshx "$GEN_PUB" "curl -sI --max-time 5 http://$SRV_PRIV | head -n1; kubectl get nodes -o wide; k6 version; aws --version; df -h / | tail -n1"
-sshx "$GEN_PUB" "git clone https://github.com/andrefillype19/gci.git ~/gci"
+aws ssm send-command --region us-east-2 --instance-ids <NFS_ID> --document-name AWS-RunShellScript \
+  --parameters 'commands=["echo ok"]' --query Command.CommandId --output text
 ```
 
-Esperado: o `curl` devolve uma linha HTTP (404 do Traefik é normal sem aplicação); `kubectl` lista os
-3 nós; `k6 version` é a versão fixada; disco com mais de 20 GB livres. Se o `kubectl` falhar com erro de
-certificado (`x509`), rode no gerador: `kubectl config set-cluster default --tls-server-name=kubernetes`.
+Se responder um `CommandId`, o IAM do gerador funciona. Se der `AccessDenied` por SCP da organização, o F1 fica com o passo
+manual (você me avisa na hora, e eu paro e religo o NFS).
 
-## 8. [ALTERA] `node_exporter` com ethtool (métricas da ENA) em todas as instâncias
+## 5. Validar rede, NFS, banco e espalhamento de pods
 
-Server, agents e gerador por SSH; banco e NFS (sem chave) por SSM.
+Em **cada agent**:
 
 ```bash
-for ip in "$SRV_PUB" "$AG1_PUB" "$AG2_PUB" "$GEN_PUB"; do sshx "$ip" "sudo bash -s" < scripts/ne-args.sh; done
-ssm_wait_online "$DB_ID";  ssm_run "$DB_ID"  scripts/ne-args.sh
-ssm_wait_online "$NFS_ID"; ssm_run "$NFS_ID" scripts/ne-args.sh
+sudo mount -t nfs4 -o nfsvers=4.1 <NFS_PRIV>:/uploads /mnt && ls /mnt | head -n3; sudo umount /mnt
+timeout 3 bash -c '</dev/tcp/<DB_PRIV>/5432' && echo db-ok
 ```
 
-Validação, do gerador (alcança todos pelo IP privado):
+No **gerador**, 3 pods de teste, 1 por nó (o mesmo `topologySpreadConstraints` que o experimento usará):
 
 ```bash
-sshx "$GEN_PUB" "for h in $SRV_PRIV $AG1_PRIV $AG2_PRIV $DB_PRIV $NFS_PRIV; do printf '%s ' \$h; curl -fsS --max-time 5 http://\$h:9100/metrics | grep -c '^node_ethtool_bw_in_allowance_exceeded'; done"
-```
-
-Cada linha deve terminar em `1` ou mais. Se aparecer `0` ou erro, a instância não expõe o coletor
-(veja `ne-args.sh`) ou o SG bloqueia a 9100.
-
-## 9. Validar rede, NFS, banco e espalhamento de pods
-
-```bash
-# NFS montável a partir de cada agent, e banco alcançável
-for ip in "$AG1_PUB" "$AG2_PUB"; do
-  sshx "$ip" "sudo mount -t nfs4 -o nfsvers=4.1 $NFS_PRIV:/uploads /mnt && ls /mnt | head -n3; sudo umount /mnt; timeout 3 bash -c '</dev/tcp/$DB_PRIV/5432' && echo db-ok"
-done
-
-# 3 pods de teste, 1 por nó (mesmo topologySpreadConstraints que o experimento usará)
-sshx "$GEN_PUB" 'kubectl apply -f - <<EOF
+kubectl apply -f - <<'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata: {name: spread-test, namespace: default}
@@ -192,62 +153,28 @@ spec:
         - {name: pause, image: registry.k8s.io/pause:3.9}
 EOF
 kubectl rollout status deploy/spread-test --timeout=120s && kubectl get pods -l app=spread-test -o wide
-kubectl delete deploy spread-test'
+kubectl delete deploy spread-test
 ```
 
-Esperado: 3 pods em 3 nós diferentes. A mesma validação com o NFS será refeita pelo `kubectl get pods -o wide`
-no início de cada execução do experimento.
+Esperado: 3 pods em 3 nós diferentes.
 
-## 10. Dead-man switch, start e stop
+## 6. Ligar, desligar e custo
 
-```bash
-DEADMAN_MIN=720 bash scripts/start.sh   # idempotente: se tudo ja esta ligado, so renova o desligamento
-```
+- **Parar** (stop, não terminate): console EC2 → selecione as 6 instâncias (`gci-app-server`, `gci-postgres-db`,
+  `gci-nfs-server`, `gci-agent-1`, `gci-agent-2`, `gci-loadgen`) → Estado da instância → **Parar**. Antes, baixe os resultados
+  do gerador: `scp -i $KEY -r ubuntu@GEN_PUB:~/results .`. O disco persiste no stop.
+- **Ligar:** Estado da instância → **Iniciar**. O IP privado persiste; o **IP público muda** (veja no console). Os agents
+  reentram no cluster sozinhos.
+- **Dead-man switch:** o gerador para **todas** as instâncias com a tag `Project=GCI` 720 min depois de cada boot dele.
+  Renovar: `sudo systemctl restart gci-deadman`. Cancelar: `sudo systemctl stop gci-deadman`.
+  Se o gerador estiver parado, não há dead-man: lembre de parar a pilha ao fim.
+- **Custo:** cerca de US$ 0,21/h das instâncias, mais cerca de US$ 0,02/h de IPv4 público (4 IPs) e eventuais créditos
+  excedentes de CPU das `t3` (US$ 0,05 por vCPU-hora).
+- **Alerta de orçamento (recomendado):** console → Billing → Budgets → Criar orçamento → "Orçamento de custo", US$ 20/mês,
+  alerta em 80% para o seu e-mail.
 
-- `scripts/start.sh`: liga o que estiver parado (tag `Project=GCI`), espera os status checks, reexecuta o
-  `discover.sh` e agenda `shutdown -h +720` em todas as instâncias (SSH nas quatro com IP público; SSM no banco e no NFS).
-- `scripts/stop.sh`: para tudo com a tag `Project=GCI` (pede confirmação; `--yes` pula). **Baixe os resultados
-  do gerador antes** (`scp -i $KEY -r ubuntu@$GEN_PUB:~/results .`).
-- Os IPs privados persistem em stop/start; o **IP público muda** (use o resumo do `discover.sh`).
-- Ao iniciar uma sessão, o gerador deve rodar dentro de `tmux`: `sshx "$GEN_PUB"` e depois `tmux new -s exp2`.
+## 7. Desfazer
 
-Alerta de orçamento recomendado (US$ 20), com o seu e-mail no lugar do marcador:
-
-```bash
-cat > .local/budget.json <<'EOF'
-{"BudgetName":"gci-exp2","BudgetLimit":{"Amount":"20","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}
-EOF
-cat > .local/budget-notif.json <<'EOF'
-[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":80,"ThresholdType":"PERCENTAGE"},
-  "Subscribers":[{"SubscriptionType":"EMAIL","Address":"<SEU_EMAIL>"}]}]
-EOF
-aws budgets create-budget --account-id "$ACCOUNT_ID" --budget file://.local/budget.json --notifications-with-subscribers file://.local/budget-notif.json
-```
-
-## 11. O que transformar em Terraform depois (por pull request)
-
-1. `aws_vpc_security_group_ingress_rule` (ou bloco inline) auto-referenciado no `gci-app-sg` (seção 3).
-2. `aws_iam_role` + `aws_iam_role_policy` + `aws_iam_instance_profile` do gerador (seção 4).
-3. Dois `aws_instance` `gci-agent-{1,2}` com `user_data` de `userdata/agent.sh` e a entrada no cluster
-   (`INSTALL_K3S_VERSION`, `K3S_URL` com o IP privado do server e `K3S_TOKEN` via Secrets Manager ou SSM Parameter, **nunca** no `user_data`).
-4. Um `aws_instance` `gci-loadgen` com `userdata/loadgen.sh`.
-5. IP privado fixo para o server (`private_ip`), como já existe para o banco e o NFS.
-6. `node_exporter` com `--collector.ethtool` no `user_data` do banco, do NFS e do server.
-7. Tags `Project=GCI` em todos (usadas por `start.sh` e `stop.sh`).
-
-## Se desistir ou precisar refazer
-
-Os comandos abaixo **apagam** recursos; revise os IDs antes.
-
-```bash
-aws ec2 terminate-instances --instance-ids "$AG1_ID" "$AG2_ID" "$GEN_ID"
-aws ec2 revoke-security-group-ingress --group-id "$SG_APP" --protocol -1 --source-group "$SG_APP"
-aws iam remove-role-from-instance-profile --instance-profile-name gci-loadgen-profile --role-name gci-loadgen-role
-aws iam delete-instance-profile --instance-profile-name gci-loadgen-profile
-aws iam delete-role-policy --role-name gci-loadgen-role --policy-name gci-loadgen-inline
-aws iam detach-role-policy --role-name gci-loadgen-role --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-aws iam delete-role --role-name gci-loadgen-role
-```
-
-Para tirar os agents do cluster sem apagar a instância: `kubectl delete node gci-agent-1 gci-agent-2` no server
-(e `sudo /usr/local/bin/k3s-agent-uninstall.sh` em cada agent).
+Reverta o PR (`git revert` do merge e novo PR): o Terraform destrói os 7 recursos novos e remove a regra do SG. Para tirar
+só os agents do cluster, sem apagar a instância: `sudo k3s kubectl delete node gci-agent-1 gci-agent-2` no server e
+`sudo /usr/local/bin/k3s-agent-uninstall.sh` em cada agent.
