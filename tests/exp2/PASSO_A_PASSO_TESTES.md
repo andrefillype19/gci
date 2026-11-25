@@ -58,7 +58,7 @@ Remove qualquer overlay anterior (para não sobrar Ingress, PVC ou PV) e aplica 
 
 ```bash
 cd ~/gci/deploy/overlays
-for o in nfs-sticky nfs-round-robin no-nfs-sticky no-nfs-round-robin; do (cd $o && kubectl kustomize . --load-restrictor LoadRestrictionsNone | kubectl delete -f - -n app --ignore-not-found); done
+for o in nfs-sticky nfs-round-robin no-nfs-sticky no-nfs-round-robin efs-sticky efs-round-robin; do (cd $o && kubectl kustomize . --load-restrictor LoadRestrictionsNone | kubectl delete -f - -n app --ignore-not-found); done
 kubectl -n app wait --for=delete pod -l app.kubernetes.io/name=gci-app --timeout=180s
 cd $OV && kubectl kustomize . --load-restrictor LoadRestrictionsNone | kubectl apply -f - -n app; cd ~
 ```
@@ -293,6 +293,35 @@ unset PROFILE HPA_RAMP_UP HPA_PEAK HPA_RAMP_DOWN HPA_COOLDOWN
 
 O `hpa.log` registra a cada 5 s as réplicas prontas, as atuais e desejadas e a CPU média informada ao HPA; com ele e o `points.json.gz` sai a linha do tempo
 (instante em que cada réplica entra e sai, falhas por janela durante a criação e a remoção de réplicas).
+
+**Bloco 6: EFS (armazenamento gerenciado no lugar do NFS próprio)**. Overlays `efs-sticky` (C1-EFS) e `efs-round-robin` (C2-EFS), mesmos VUs, N=3 e P2 do C1 e C2.
+Pré-requisito: o `terraform apply` do EFS (PR `feat/efs-experimento`) concluído e o `efs_id` anotado (`terraform output efs_id`).
+
+*Uma vez (preparar as pastas no EFS)*, em qualquer nó (por exemplo `gci-agent-1`, via SSM ou SSH a partir do gerador); o EFS novo é vazio e a raiz é do root:
+
+```bash
+sudo mkdir -p /mnt/efs && sudo mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 10.0.2.70:/ /mnt/efs
+sudo mkdir -p /mnt/efs/uploads /mnt/efs/sessions && sudo chown 82:82 /mnt/efs/uploads /mnt/efs/sessions && sudo chmod 0777 /mnt/efs/uploads /mnt/efs/sessions
+sudo umount /mnt/efs
+```
+
+Execuções: `ID=C1-EFS OV=efs-sticky` e `ID=C2-EFS OV=efs-round-robin` com `N=3 VUS_SESSION=8 VUS_UPLOAD=3` (P1 a P5). O `nfs-mount.txt` deve mostrar o IP `10.0.2.70`.
+Resets: o `reset-test-data.sh` limpa os dados pelos pods e vale igual. Para os mesmos testes complementares, use `efs-sticky` no K-D (`KD-EFS-A/B/C`) e no HPA (`HPA-EFS-C1/C2`).
+
+**F1-EFS (queda do acesso ao EFS)**: igual ao Bloco 3, com `ID=F1-EFS` e `efs-sticky`, trocando só a falha. Não há como parar o serviço; remove-se a regra 2049 do security group
+(o gerador tem permissão só nesse SG). Na janela 2, no lugar dos `aws ssm`:
+
+```bash
+EFS_SG=$(aws ec2 describe-security-groups --region us-east-2 --filters Name=group-name,Values=gci-efs-sg --query 'SecurityGroups[0].GroupId' --output text)
+APP_SG=$(aws ec2 describe-security-groups --region us-east-2 --filters Name=group-name,Values=gci-app-sg --query 'SecurityGroups[0].GroupId' --output text)
+# em T0+180 s (queda):
+aws ec2 revoke-security-group-ingress --region us-east-2 --group-id $EFS_SG --protocol tcp --port 2049 --source-group $APP_SG | tee -a $R/fault.log
+# em T0+300 s (restauracao):
+aws ec2 authorize-security-group-ingress --region us-east-2 --group-id $EFS_SG --protocol tcp --port 2049 --source-group $APP_SG | tee -a $R/fault.log
+```
+
+Isto simula perda de **acesso** (rede), não falha interna do serviço. Conexões NFS já estabelecidas podem continuar por um tempo (o security group é com estado): se
+as requisições não travarem, derrube as conexões com `sudo ss -K dst 10.0.2.70` nos nós (ou use `iptables -A OUTPUT -d 10.0.2.70 -j DROP` e `-D` para restaurar) e registre o método usado.
 
 ## 6. Fim de sessão
 

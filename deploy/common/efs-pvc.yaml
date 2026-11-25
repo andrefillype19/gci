@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-uploads-pvc
+  namespace: app
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: gci-efs-uploads-pv
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-sessions-pvc
+  namespace: app
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: gci-efs-sessions-pv
+  resources:
+    requests:
+      storage: 1Gi

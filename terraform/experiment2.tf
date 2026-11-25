@@ -132,6 +132,18 @@ resource "aws_iam_role_policy" "loadgen_inline" {
         ]
       },
       {
+        # F1 com EFS: simular a queda removendo/recolocando so a regra 2049 do SG do EFS.
+        Sid    = "FalhaEfsSomenteNoSgDoEfs"
+        Effect = "Allow"
+
+        Action = [
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupIngress"
+        ]
+
+        Resource = aws_security_group.efs_sg.arn
+      },
+      {
         # Dead-man switch e encerramento da pilha: so instancias com tag Project=GCI.
         Sid      = "PararPilhaPorTag"
         Effect   = "Allow"
