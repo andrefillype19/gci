@@ -31,3 +31,18 @@ output "nfs_instance_id" {
   description = "ID da EC2 NFS para comandos SSM"
   value       = aws_instance.nfs_server.id
 }
+
+output "efs_id" {
+  description = "ID do sistema de arquivos EFS"
+  value       = aws_efs_file_system.gci.id
+}
+
+output "efs_private_ip" {
+  description = "IP privado do mount target do EFS (PVs do k8s)"
+  value       = aws_efs_mount_target.gci.ip_address
+}
+
+output "efs_sg_id" {
+  description = "Security group do EFS (usado para simular a queda: remover a regra 2049)"
+  value       = aws_security_group.efs_sg.id
+}

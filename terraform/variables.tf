@@ -58,3 +58,9 @@ variable "nfs_private_ip" {
   type        = string
   default     = "10.0.2.60"
 }
+
+variable "efs_private_ip" {
+  description = "IP privado fixo do mount target do EFS (usado nos PVs em deploy/common/efs-pv.yaml)"
+  type        = string
+  default     = "10.0.2.70"
+}
