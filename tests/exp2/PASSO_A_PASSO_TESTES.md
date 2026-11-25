@@ -263,6 +263,37 @@ kd() {   # kd <ID>   (use as variaveis de ambiente de cada configuracao na mesma
 Observação: a variável na frente de `kd` vale só para aquela chamada. Sem NFS há 1 pod: a afinidade é irrelevante, e o objetivo é ver se a falha
 de leitura do PDF (regravação não atômica da aplicação) também ocorre sem NFS.
 
+**Bloco 5: HPA, escalonamento automático com NFS** (2 execuções de cerca de 20 min: `HPA-C1` com `nfs-sticky` e `HPA-C2` com `nfs-round-robin`).
+Perfil `hpa` do k6 (subida 2 min, pico 8 min, queda para 10% em 2 min, baixa carga 6 min, 30 s a zero), com os VUs do C (8+3). O HPA fica livre (1 a 3 réplicas,
+alvo de 70% de CPU) e o `topologySpreadConstraints` faz as réplicas novas irem para nós diferentes. Sem `nodeSelector`: o primeiro pod pode cair em qualquer nó.
+Faça P1 (troca de overlay, que também restaura o HPA 1 a 3), e depois, no lugar de P2:
+
+```bash
+kubectl -n app patch deploy gci-app --type merge -p '{"spec":{"template":{"spec":{"topologySpreadConstraints":[{"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"DoNotSchedule","labelSelector":{"matchLabels":{"app.kubernetes.io/name":"gci-app"}}}]}}}}'
+kubectl -n app scale deploy/gci-app --replicas=1
+kubectl -n app rollout status deploy/gci-app --timeout=300s
+kubectl -n app get pods -o wide; kubectl -n app get hpa gci-app
+```
+
+Confira 1 pod `Running` e o HPA com MINPODS=1 e MAXPODS=3. Depois P3 (reset, 90 s de repouso e registros, com `nfs-mount.txt`) e a carga:
+
+```bash
+export ID=HPA-C1 REP=1 VUS_SESSION=8 VUS_UPLOAD=3 PROFILE=hpa HPA_RAMP_UP=2m HPA_PEAK=8m HPA_RAMP_DOWN=2m HPA_COOLDOWN=6m   # HPA-C2 para o round robin
+R=$RES/$ID-r$REP; mkdir -p $R
+( while true; do echo "$(date -u +%T) ready=$(kubectl -n app get deploy gci-app -o jsonpath='{.status.readyReplicas}') hpa=$(kubectl -n app get hpa gci-app -o jsonpath='{.status.currentReplicas}/{.status.desiredReplicas} cpu={.status.currentMetrics[0].resource.current.averageUtilization}')"; sleep 5; done ) > $R/hpa.log &
+HPA_PID=$!
+echo "$(date -u +%FT%TZ) inicio $ID r$REP" | tee -a $RES/runs.log
+k6 run --tag scenario_name=$ID --tag run=$REP --summary-export $R/summary.json --out json=$R/points.json.gz ~/gci/tests/k6/loadtest.js 2>&1 | tee $R/k6.txt
+echo "$(date -u +%FT%TZ) fim $ID r$REP" | tee -a $RES/runs.log
+sleep 60; kill $HPA_PID
+kubectl -n app get pods -o wide > $R/pods-after.txt; kubectl -n app get hpa gci-app > $R/hpa-after.txt; kubectl -n app get events --sort-by=.lastTimestamp > $R/events.txt
+bash ~/gci/tests/scripts/reset-test-data.sh
+unset PROFILE HPA_RAMP_UP HPA_PEAK HPA_RAMP_DOWN HPA_COOLDOWN
+```
+
+O `hpa.log` registra a cada 5 s as réplicas prontas, as atuais e desejadas e a CPU média informada ao HPA; com ele e o `points.json.gz` sai a linha do tempo
+(instante em que cada réplica entra e sai, falhas por janela durante a criação e a remoção de réplicas).
+
 ## 6. Fim de sessão
 
 Créditos de CPU das `t3` (conferir se houve excedente; o banco `m7i-flex` não é burstável e não retorna dados):
