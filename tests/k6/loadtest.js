@@ -34,6 +34,10 @@ export const fileVerifyFailure = new Counter("file_verify_failure");
 const VUS_SESSION = Number(__ENV.VUS_SESSION || 30);
 const VUS_UPLOAD = Number(__ENV.VUS_UPLOAD || 15);
 
+// Timeout opcional por requisicao (ex.: HTTP_TIMEOUT=15s). Vazio = padrao do k6 (60s).
+// Usado no F1 para transformar o congelamento em erros contaveis.
+const HTTP_TIMEOUT = __ENV.HTTP_TIMEOUT || "";
+
 // PROFILE:
 //   steady (padrao) - 2m subida, 10m platao, 2m descida (comparar os 4 cenarios)
 //   hpa             - subida, pico, queda e periodo de baixa carga para o HPA
@@ -118,6 +122,9 @@ function requestParams(flow, operation, jar) {
   };
   if (jar) {
     params.jar = jar;
+  }
+  if (HTTP_TIMEOUT) {
+    params.timeout = HTTP_TIMEOUT;
   }
   return params;
 }

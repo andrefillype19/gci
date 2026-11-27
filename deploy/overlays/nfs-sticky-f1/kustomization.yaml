@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base/app
+  - ../../common/ingress-sticky.yaml
+  - ../../common/nfs-pv-soft.yaml
+  - ../../common/nfs-pvc.yaml
+patchesStrategicMerge:
+  - ../../common/service-sticky-patch.yaml
+  - ../../common/deployment-nfs-patch.yaml
+  - ../../common/configmap-php-nfs-patch.yaml
