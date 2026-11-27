@@ -33,7 +33,7 @@ echo $$ >"$OUT/collect.pid"
 [ -s "$S" ] || printf 'epoch\tsource\tentity\tmetric\tvalue\n' >"$S"
 
 BG=""
-cleanup() { kill $BG 2>/dev/null; wait 2>/dev/null; echo "$(date +%s.%N) coletor encerrado" >>"$E"; exit 0; }
+cleanup() { for p in $BG; do pkill -P "$p" 2>/dev/null; kill "$p" 2>/dev/null; done; pkill -f "kubectl.* logs -f.*(traefik|gci-app)" 2>/dev/null; wait 2>/dev/null; echo "$(date +%s.%N) coletor encerrado" >>"$E"; exit 0; }
 trap cleanup INT TERM
 
 # --- kubelet: CPU/memoria por pod e por no (barato; sem cAdvisor) ---

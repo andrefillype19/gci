@@ -2,6 +2,9 @@
 # status e pod de destino (ServiceAddr = IP:porta do pod). Aplicar ANTES do experimento:
 # o k3s reinstala o chart e o Traefik reinicia (alguns segundos de indisponibilidade).
 #   kubectl apply -f deploy/cluster/traefik-accesslog.yaml
+# Validado no cluster: o chart traefik 41.6.1 do k3s ignora o bloco `logs.access`; as flags
+# vao por additionalArguments. Apos aplicar, aguarde ~40 s e confira com
+#   kubectl -n kube-system logs deploy/traefik --tail=3
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -9,13 +12,9 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    logs:
-      access:
-        enabled: true
-        format: json
-        bufferingSize: 0
-        fields:
-          general:
-            defaultmode: keep
-          headers:
-            defaultmode: drop
+    additionalArguments:
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+      - "--accesslog.bufferingsize=0"
+      - "--accesslog.fields.defaultmode=keep"
+      - "--accesslog.fields.headers.defaultmode=drop"
