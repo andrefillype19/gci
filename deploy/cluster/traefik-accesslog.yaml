@@ -1,0 +1,21 @@
+# Liga o access log JSON do Traefik (k3s) para identificar cada falha por horario, rota,
+# status e pod de destino (ServiceAddr = IP:porta do pod). Aplicar ANTES do experimento:
+# o k3s reinstala o chart e o Traefik reinicia (alguns segundos de indisponibilidade).
+#   kubectl apply -f deploy/cluster/traefik-accesslog.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    logs:
+      access:
+        enabled: true
+        format: json
+        bufferingSize: 0
+        fields:
+          general:
+            defaultmode: keep
+          headers:
+            defaultmode: drop
